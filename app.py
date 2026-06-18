@@ -1,0 +1,302 @@
+"""
+Umayal's Study Coach — FastAPI Backend
+CBSE Class 9 AI-powered study assistant.
+Supports Groq (free, fast) and Google Gemini as AI backends.
+"""
+import json
+import os
+from datetime import date
+from pathlib import Path
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# --- AI Backend Configuration ---
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+ai_backend = None
+ai_backend_name = "none"
+
+# Prefer Groq (free, fast), fall back to Gemini
+if GROQ_API_KEY and GROQ_API_KEY != "your-key-here":
+    from groq import Groq
+    groq_client = Groq(api_key=GROQ_API_KEY)
+    ai_backend = "groq"
+    ai_backend_name = "Groq (Llama 3.3 70B)"
+    print(f"[OK] AI Backend: Groq (Llama 3.3 70B)")
+elif GEMINI_API_KEY and GEMINI_API_KEY != "your-key-here":
+    from google import genai
+    gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+    ai_backend = "gemini"
+    ai_backend_name = "Google Gemini 2.5 Flash"
+    print(f"[OK] AI Backend: Gemini 2.5 Flash")
+else:
+    print("[WARN]  No AI API key configured. Set GROQ_API_KEY or GEMINI_API_KEY in .env")
+
+DATA_DIR = Path(__file__).parent / "data"
+STATIC_DIR = Path(__file__).parent / "static"
+USAGE_FILE = Path(__file__).parent / "usage.json"
+
+# --- Usage Tracking ---
+DAILY_LIMIT = 50
+
+def load_usage() -> dict:
+    if USAGE_FILE.exists():
+        try:
+            with open(USAGE_FILE, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {"date": str(date.today()), "count": 0, "total_all_time": 0}
+
+def save_usage(usage: dict):
+    with open(USAGE_FILE, "w") as f:
+        json.dump(usage, f, indent=2)
+
+def get_today_usage() -> dict:
+    usage = load_usage()
+    today = str(date.today())
+    if usage.get("date") != today:
+        usage["date"] = today
+        usage["count"] = 0
+    return usage
+
+def increment_usage() -> dict:
+    usage = get_today_usage()
+    usage["count"] += 1
+    usage["total_all_time"] = usage.get("total_all_time", 0) + 1
+    save_usage(usage)
+    return usage
+
+
+app = FastAPI(title="Umayal's Study Coach", version="2.0.0")
+
+SYSTEM_PROMPT = """You are Umayal's personal study coach for CBSE Class 9 at DPS Nacharam.
+
+Your role:
+- Explain concepts simply with real-world examples that a 14-year-old can relate to
+- Use NCERT textbook content as your primary reference
+- For Maths and Physics problems, ALWAYS show step-by-step working
+- Guide the student to understand — don't just give answers
+- Be concise and exam-focused (mention important points for exams)
+- You can use Hindi or Telugu words occasionally to help explain difficult concepts
+- Be encouraging and friendly — use phrases like "Great question!", "You're on the right track!"
+- Always reference the chapter and topic in your answers
+- Use bullet points and numbered steps for clarity
+- If a question is outside Class 9 CBSE syllabus, mention that and still try to help
+
+Format your responses using markdown for clarity (bold, bullets, numbered lists).
+"""
+
+
+def load_subject_data(subject_key: str) -> Optional[dict]:
+    filepath = DATA_DIR / f"{subject_key}.json"
+    if filepath.exists():
+        with open(filepath, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
+def load_index() -> dict:
+    filepath = DATA_DIR / "index.json"
+    if filepath.exists():
+        with open(filepath, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def find_relevant_context(subject_key: str, question: str) -> str:
+    data = load_subject_data(subject_key)
+    if not data or not data.get("chapters"):
+        return ""
+
+    question_lower = question.lower()
+    scored_chapters = []
+
+    for chapter in data["chapters"]:
+        chapter_text_lower = chapter.get("text", "").lower()
+        chapter_name_lower = chapter.get("chapter_name", "").lower()
+
+        score = 0
+        words = set(question_lower.split())
+        for word in words:
+            if len(word) > 3:
+                if word in chapter_name_lower:
+                    score += 10
+                if word in chapter_text_lower:
+                    score += 1
+
+        if score > 0:
+            scored_chapters.append((score, chapter))
+
+    scored_chapters.sort(key=lambda x: x[0], reverse=True)
+
+    context_parts = []
+    for _, chapter in scored_chapters[:2]:
+        text = chapter.get("text", "")
+        if len(text) > 4000:
+            text = text[:4000] + "..."
+        context_parts.append(
+            f"--- Chapter {chapter['chapter_number']}: {chapter['chapter_name']} ---\n{text}"
+        )
+
+    return "\n\n".join(context_parts)
+
+
+def call_ai(system_prompt: str, user_prompt: str) -> str:
+    """Call the configured AI backend."""
+    if ai_backend == "groq":
+        response = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.7,
+            max_tokens=2048,
+        )
+        return response.choices[0].message.content
+    elif ai_backend == "gemini":
+        response = gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=system_prompt + "\n\n" + user_prompt,
+        )
+        return response.text
+    else:
+        raise Exception("No AI backend configured")
+
+
+class QuestionRequest(BaseModel):
+    subject: str
+    question: str
+    chapter: Optional[str] = None
+
+class AnswerResponse(BaseModel):
+    answer: str
+    subject: str
+    context_used: bool
+    usage_today: int
+    usage_limit: int
+    usage_remaining: int
+    ai_backend: str
+
+
+@app.get("/api/subjects")
+async def get_subjects():
+    index = load_index()
+    return {"subjects": index}
+
+@app.get("/api/chapter/{subject}/{chapter_num}")
+async def get_chapter(subject: str, chapter_num: str):
+    data = load_subject_data(subject)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Subject '{subject}' not found")
+
+    for chapter in data.get("chapters", []):
+        if chapter["chapter_number"] == chapter_num:
+            text = chapter.get("text", "")
+            return {
+                "subject": data["subject"],
+                "chapter_number": chapter["chapter_number"],
+                "chapter_name": chapter["chapter_name"],
+                "word_count": chapter.get("word_count", 0),
+                "summary": text,
+            }
+
+    raise HTTPException(status_code=404, detail=f"Chapter {chapter_num} not found")
+
+@app.get("/api/usage")
+async def get_usage():
+    usage = get_today_usage()
+    return {
+        "today": usage["count"],
+        "limit": DAILY_LIMIT,
+        "remaining": max(0, DAILY_LIMIT - usage["count"]),
+        "total_all_time": usage.get("total_all_time", 0),
+        "ai_backend": ai_backend_name,
+    }
+
+@app.get("/api/status")
+async def get_status():
+    """Health check + backend info."""
+    return {
+        "status": "ok",
+        "ai_backend": ai_backend_name,
+        "ai_configured": ai_backend is not None,
+    }
+
+@app.post("/api/ask")
+async def ask_doubt(request: QuestionRequest):
+    if not ai_backend:
+        raise HTTPException(
+            status_code=500,
+            detail="No AI API key configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env file.",
+        )
+
+    # Check daily limit
+    usage = get_today_usage()
+    if usage["count"] >= DAILY_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily question limit reached ({DAILY_LIMIT} questions). Come back tomorrow! 📚",
+        )
+
+    # Find relevant NCERT content
+    context = ""
+    if request.chapter:
+        data = load_subject_data(request.subject)
+        if data:
+            for ch in data.get("chapters", []):
+                if ch["chapter_number"] == request.chapter:
+                    text = ch.get("text", "")
+                    context = text[:6000] if len(text) > 6000 else text
+                    break
+    if not context:
+        context = find_relevant_context(request.subject, request.question)
+
+    # Build the prompt
+    index = load_index()
+    subject_name = index.get(request.subject, {}).get("name", request.subject)
+
+    user_prompt = f"Subject: {subject_name}\n"
+    if request.chapter:
+        user_prompt += f"Chapter: {request.chapter}\n"
+    user_prompt += f"\nStudent's Question: {request.question}"
+
+    if context:
+        user_prompt += f"\n\n--- Relevant NCERT Content ---\n{context}"
+
+    try:
+        answer = call_ai(SYSTEM_PROMPT, user_prompt)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+
+    # Increment usage AFTER successful response
+    updated_usage = increment_usage()
+
+    return AnswerResponse(
+        answer=answer,
+        subject=subject_name,
+        context_used=bool(context),
+        usage_today=updated_usage["count"],
+        usage_limit=DAILY_LIMIT,
+        usage_remaining=max(0, DAILY_LIMIT - updated_usage["count"]),
+        ai_backend=ai_backend_name,
+    )
+
+
+# Serve static files
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+@app.get("/")
+async def serve_frontend():
+    return FileResponse(str(STATIC_DIR / "index.html"))
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

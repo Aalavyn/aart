@@ -1,0 +1,406 @@
+{
+  "maths": {
+    "name": "Mathematics",
+    "emoji": "📐",
+    "total_chapters": 8,
+    "chapters": [
+      {
+        "number": "01",
+        "name": "Number Systems",
+        "word_count": 4044
+      },
+      {
+        "number": "02",
+        "name": "Polynomials",
+        "word_count": 6753
+      },
+      {
+        "number": "03",
+        "name": "Coordinate Geometry",
+        "word_count": 7512
+      },
+      {
+        "number": "04",
+        "name": "Linear Equations in Two Variables",
+        "word_count": 7319
+      },
+      {
+        "number": "05",
+        "name": "Introduction to Euclid's Geometry",
+        "word_count": 7589
+      },
+      {
+        "number": "06",
+        "name": "Lines and Angles",
+        "word_count": 10676
+      },
+      {
+        "number": "07",
+        "name": "Triangles",
+        "word_count": 5601
+      },
+      {
+        "number": "08",
+        "name": "Quadrilaterals",
+        "word_count": 7980
+      }
+    ]
+  },
+  "science": {
+    "name": "Science",
+    "emoji": "🔬",
+    "total_chapters": 13,
+    "chapters": [
+      {
+        "number": "01",
+        "name": "Matter in Our Surroundings",
+        "word_count": 3017
+      },
+      {
+        "number": "02",
+        "name": "Is Matter Around Us Pure",
+        "word_count": 8038
+      },
+      {
+        "number": "03",
+        "name": "Atoms and Molecules",
+        "word_count": 7524
+      },
+      {
+        "number": "04",
+        "name": "Structure of the Atom",
+        "word_count": 10843
+      },
+      {
+        "number": "05",
+        "name": "The Fundamental Unit of Life",
+        "word_count": 8279
+      },
+      {
+        "number": "06",
+        "name": "Tissues",
+        "word_count": 10406
+      },
+      {
+        "number": "07",
+        "name": "Motion",
+        "word_count": 11437
+      },
+      {
+        "number": "08",
+        "name": "Force and Laws of Motion",
+        "word_count": 8242
+      },
+      {
+        "number": "09",
+        "name": "Gravitation",
+        "word_count": 8024
+      },
+      {
+        "number": "10",
+        "name": "Work and Energy",
+        "word_count": 9292
+      },
+      {
+        "number": "11",
+        "name": "Sound",
+        "word_count": 8555
+      },
+      {
+        "number": "12",
+        "name": "Improvement in Food Resources",
+        "word_count": 8817
+      },
+      {
+        "number": "13",
+        "name": "Why Do We Fall Ill",
+        "word_count": 8710
+      }
+    ]
+  },
+  "english": {
+    "name": "English (Beehive)",
+    "emoji": "📖",
+    "total_chapters": 8,
+    "chapters": [
+      {
+        "number": "01",
+        "name": "The Fun They Had",
+        "word_count": 6309
+      },
+      {
+        "number": "02",
+        "name": "The Sound of Music",
+        "word_count": 7249
+      },
+      {
+        "number": "03",
+        "name": "The Little Girl",
+        "word_count": 5680
+      },
+      {
+        "number": "04",
+        "name": "A Truly Beautiful Mind",
+        "word_count": 8114
+      },
+      {
+        "number": "05",
+        "name": "The Snake and the Mirror",
+        "word_count": 5443
+      },
+      {
+        "number": "06",
+        "name": "My Childhood",
+        "word_count": 6356
+      },
+      {
+        "number": "07",
+        "name": "Packing",
+        "word_count": 5616
+      },
+      {
+        "number": "08",
+        "name": "Reach for the Top",
+        "word_count": 5966
+      }
+    ]
+  },
+  "hindi": {
+    "name": "Hindi (Ganga)",
+    "emoji": "📝",
+    "total_chapters": 12,
+    "chapters": [
+      {
+        "number": "01",
+        "name": "गणित की बोध गंगा - पाठ 1",
+        "word_count": 7843
+      },
+      {
+        "number": "02",
+        "name": "पाठ 2",
+        "word_count": 4711
+      },
+      {
+        "number": "03",
+        "name": "पाठ 3",
+        "word_count": 4652
+      },
+      {
+        "number": "04",
+        "name": "पाठ 4",
+        "word_count": 7508
+      },
+      {
+        "number": "05",
+        "name": "पाठ 5",
+        "word_count": 4917
+      },
+      {
+        "number": "06",
+        "name": "पाठ 6",
+        "word_count": 5621
+      },
+      {
+        "number": "07",
+        "name": "पाठ 7",
+        "word_count": 7117
+      },
+      {
+        "number": "08",
+        "name": "पाठ 8",
+        "word_count": 1567
+      },
+      {
+        "number": "09",
+        "name": "पाठ 9",
+        "word_count": 2748
+      },
+      {
+        "number": "10",
+        "name": "पाठ 10",
+        "word_count": 1952
+      },
+      {
+        "number": "11",
+        "name": "पाठ 11",
+        "word_count": 3764
+      },
+      {
+        "number": "12",
+        "name": "पाठ 12",
+        "word_count": 2913
+      }
+    ]
+  },
+  "health-pe": {
+    "name": "Health & Physical Education",
+    "emoji": "🏃",
+    "total_chapters": 6,
+    "chapters": [
+      {
+        "number": "01",
+        "name": "Unit 1",
+        "word_count": 6412
+      },
+      {
+        "number": "02",
+        "name": "Unit 2",
+        "word_count": 9253
+      },
+      {
+        "number": "03",
+        "name": "Unit 3",
+        "word_count": 5362
+      },
+      {
+        "number": "04",
+        "name": "Unit 4",
+        "word_count": 8676
+      },
+      {
+        "number": "05",
+        "name": "Unit 5",
+        "word_count": 3982
+      },
+      {
+        "number": "06",
+        "name": "Unit 6",
+        "word_count": 14311
+      }
+    ]
+  },
+  "sst-history": {
+    "name": "Social Science - History",
+    "emoji": "🏛️",
+    "total_chapters": 5,
+    "chapters": [
+      {
+        "number": "01",
+        "name": "The French Revolution",
+        "word_count": 8489
+      },
+      {
+        "number": "02",
+        "name": "Socialism in Europe and the Russian Revolution",
+        "word_count": 8836
+      },
+      {
+        "number": "03",
+        "name": "Nazism and the Rise of Hitler",
+        "word_count": 8269
+      },
+      {
+        "number": "04",
+        "name": "Forest Society and Colonialism",
+        "word_count": 6968
+      },
+      {
+        "number": "05",
+        "name": "Pastoralists in the Modern World",
+        "word_count": 6410
+      }
+    ]
+  },
+  "sst-geography": {
+    "name": "Social Science - Geography",
+    "emoji": "🌍",
+    "total_chapters": 6,
+    "chapters": [
+      {
+        "number": "01",
+        "name": "India – Size and Location",
+        "word_count": 1441
+      },
+      {
+        "number": "02",
+        "name": "Physical Features of India",
+        "word_count": 3081
+      },
+      {
+        "number": "03",
+        "name": "Drainage",
+        "word_count": 3370
+      },
+      {
+        "number": "04",
+        "name": "Climate",
+        "word_count": 5706
+      },
+      {
+        "number": "05",
+        "name": "Natural Vegetation and Wild Life",
+        "word_count": 3352
+      },
+      {
+        "number": "06",
+        "name": "Population",
+        "word_count": 4077
+      }
+    ]
+  },
+  "sst-civics": {
+    "name": "Social Science - Civics",
+    "emoji": "⚖️",
+    "total_chapters": 5,
+    "chapters": [
+      {
+        "number": "01",
+        "name": "What is Democracy? Why Democracy?",
+        "word_count": 7674
+      },
+      {
+        "number": "02",
+        "name": "Constitutional Design",
+        "word_count": 6872
+      },
+      {
+        "number": "03",
+        "name": "Electoral Politics",
+        "word_count": 8789
+      },
+      {
+        "number": "04",
+        "name": "Working of Institutions",
+        "word_count": 7975
+      },
+      {
+        "number": "05",
+        "name": "Democratic Rights",
+        "word_count": 8289
+      }
+    ]
+  },
+  "sst-economics": {
+    "name": "Social Science - Economics",
+    "emoji": "💰",
+    "total_chapters": 4,
+    "chapters": [
+      {
+        "number": "01",
+        "name": "The Story of Village Palampur",
+        "word_count": 5863
+      },
+      {
+        "number": "02",
+        "name": "People as Resource",
+        "word_count": 5176
+      },
+      {
+        "number": "03",
+        "name": "Poverty as a Challenge",
+        "word_count": 4908
+      },
+      {
+        "number": "04",
+        "name": "Food Security in India",
+        "word_count": 5102
+      }
+    ]
+  },
+  "telugu": {
+    "name": "Telugu (SCERT)",
+    "emoji": "🔤",
+    "total_chapters": 0,
+    "chapters": []
+  }
+}

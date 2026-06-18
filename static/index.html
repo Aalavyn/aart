@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Umayal's Study Coach</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-icon">📚</span>
+                    <div>
+                        <h1>Umayal's Study Coach</h1>
+                        <p class="tagline">CBSE Class 9 • DPS Nacharam</p>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div id="usage-badge" class="usage-badge usage-ok">Loading...</div>
+                    <nav class="nav-tabs">
+                        <button class="nav-btn active" data-view="subjects" onclick="showView('subjects')">
+                            📖 Subjects
+                        </button>
+                        <button class="nav-btn" data-view="doubt" onclick="showView('doubt')">
+                            🤖 Ask a Doubt
+                        </button>
+                    </nav>
+                </div>
+            </div>
+        </header>
+
+        <!-- Subjects View -->
+        <main id="subjects-view" class="view active">
+            <div class="container">
+                <h2 class="section-title">📚 Your Subjects</h2>
+                <div id="subjects-accordion" class="subjects-accordion">
+                    <div class="loading">Loading subjects...</div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Chapter Detail View -->
+        <main id="chapter-view" class="view">
+            <div class="container">
+                <button class="back-btn" onclick="showView('subjects')">← Back to Subjects</button>
+                <div id="chapter-content" class="chapter-content"></div>
+            </div>
+        </main>
+
+        <!-- Doubt Solver View -->
+        <main id="doubt-view" class="view">
+            <div class="container">
+                <div class="doubt-solver">
+                    <div class="doubt-header">
+                        <h2>🤖 AI Doubt Solver</h2>
+                        <p>Ask any question about your CBSE Class 9 subjects!</p>
+                    </div>
+
+                    <div class="doubt-form">
+                        <div class="form-row">
+                            <label for="subject-select">Subject</label>
+                            <select id="subject-select">
+                                <option value="">Select a subject...</option>
+                            </select>
+                        </div>
+                        <div class="form-row" id="chapter-select-row" style="display:none;">
+                            <label for="chapter-select">Chapter (optional)</label>
+                            <select id="chapter-select">
+                                <option value="">All chapters</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <label for="question-input">Your Question</label>
+                            <textarea id="question-input" rows="3" placeholder="Type your doubt here... e.g., 'Explain Newton's second law with an example'"></textarea>
+                        </div>
+                        <button id="ask-btn" class="ask-btn" onclick="askDoubt()">
+                            Ask My Doubt ✨
+                        </button>
+                    </div>
+
+                    <!-- Chat History -->
+                    <div id="chat-history" class="chat-history"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
