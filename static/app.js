@@ -150,13 +150,21 @@ async function showChapterDetail(subjectKey, chapterNum) {
         const res = await fetch(`/api/chapter/${subjectKey}/${chapterNum}`);
         const data = await res.json();
 
+        const bodyHtml = data.formatted_html
+            ? data.formatted_html
+            : `<div class="chapter-text">${escapeHtml(data.summary)}</div>`;
+
         content.innerHTML = `
-            <h2>Chapter ${parseInt(data.chapter_number)}: ${data.chapter_name}</h2>
-            <div class="meta">${data.subject} • ${data.word_count.toLocaleString()} words</div>
-            <div class="chapter-text">${escapeHtml(data.summary)}</div>
-            <button class="ask-about-btn" onclick="askAboutChapter('${subjectKey}', '${chapterNum}', '${escapeAttr(data.chapter_name)}')">
-                🤖 Ask a doubt about this chapter
-            </button>
+            <div class="chapter-hero">
+                <h2>Chapter ${parseInt(data.chapter_number)}: ${data.chapter_name}</h2>
+                <div class="meta">${data.subject} • ${data.word_count.toLocaleString()} words</div>
+            </div>
+            <div class="chapter-body">${bodyHtml}</div>
+            <div class="chapter-actions">
+                <button class="ask-about-btn" onclick="askAboutChapter('${subjectKey}', '${chapterNum}', '${escapeAttr(data.chapter_name)}')">
+                    🤖 Ask a doubt about this chapter
+                </button>
+            </div>
         `;
     } catch (err) {
         content.innerHTML = '<div class="error-msg">Could not load chapter content.</div>';

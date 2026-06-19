@@ -191,6 +191,55 @@ async def get_subjects():
     index = load_index()
     return {"subjects": index}
 
+CHAPTER_FORMAT_PROMPT = """You are a study-notes formatter for a Class 9 CBSE student.
+Convert the raw textbook content below into structured, study-friendly HTML.
+
+RULES:
+- Use these EXACT HTML structures (no other tags):
+  <div class="study-section"><h3>Section Title</h3><p>Content...</p></div>
+  <div class="key-points"><h4>📌 Key Points</h4><ul><li>point 1</li><li>point 2</li></ul></div>
+  <div class="formula-box"><h4>📐 Formula</h4><div class="formula">formula here</div><p class="formula-note">What it means...</p></div>
+  <div class="remember-box"><h4>💡 Remember This!</h4><p>Important thing to remember</p></div>
+  <div class="extra-note"><h4>📝 Extra Note</h4><p>Additional insight or exam tip</p></div>
+  <div class="definition"><strong>Term:</strong> Definition here</div>
+  <div class="example-box"><h4>✏️ Example</h4><p>Worked example here</p></div>
+- Bold important terms with <strong>
+- Keep it concise and exam-focused
+- Extract ALL formulas into formula-box divs
+- Add 2-3 "Remember This" boxes per chapter for the most important concepts
+- Add at least 1 "Extra Note" with exam tips
+- End with a "Key Points" summary of the whole chapter
+- Use simple language a 14-year-old can understand
+- Do NOT use markdown — output raw HTML only
+- Do NOT wrap in code blocks or backticks
+"""
+
+CACHE_DIR = Path(__file__).parent / "cache"
+
+def get_cached_chapter(subject: str, chapter_num: str) -> Optional[str]:
+    CACHE_DIR.mkdir(exist_ok=True)
+    cache_file = CACHE_DIR / f"{subject}_{chapter_num}.html"
+    if cache_file.exists():
+        return cache_file.read_text(encoding="utf-8")
+    return None
+
+def save_cached_chapter(subject: str, chapter_num: str, html: str):
+    CACHE_DIR.mkdir(exist_ok=True)
+    cache_file = CACHE_DIR / f"{subject}_{chapter_num}.html"
+    cache_file.write_text(html, encoding="utf-8")
+
+def format_chapter_with_ai(text: str, chapter_name: str, subject_name: str) -> str:
+    """Use AI to format raw chapter text into study-friendly HTML."""
+    if not ai_backend:
+        return None
+    prompt = f"Subject: {subject_name}\nChapter: {chapter_name}\n\n--- Raw Textbook Content ---\n{text[:12000]}"
+    try:
+        return call_ai(CHAPTER_FORMAT_PROMPT, prompt)
+    except Exception as e:
+        print(f"[WARN] AI formatting failed: {e}")
+        return None
+
+
 @app.get("/api/chapter/{subject}/{chapter_num}")
 async def get_chapter(subject: str, chapter_num: str):
     data = load_subject_data(subject)
@@ -200,12 +249,29 @@ async def get_chapter(subject: str, chapter_num: str):
     for chapter in data.get("chapters", []):
         if chapter["chapter_number"] == chapter_num:
             text = chapter.get("text", "")
+
+            # Check cache first
+            formatted = get_cached_chapter(subject, chapter_num)
+
+            # If no cache, format with AI
+            if not formatted and ai_backend:
+                formatted = format_chapter_with_ai(text, chapter["chapter_name"], data["subject"])
+                if formatted:
+                    # Clean up any markdown code fences the AI might add
+                    formatted = formatted.strip()
+                    if formatted.startswith("```"):
+                        formatted = "\n".join(formatted.split("\n")[1:])
+                    if formatted.endswith("```"):
+                        formatted = "\n".join(formatted.split("\n")[:-1])
+                    save_cached_chapter(subject, chapter_num, formatted)
+
             return {
                 "subject": data["subject"],
                 "chapter_number": chapter["chapter_number"],
                 "chapter_name": chapter["chapter_name"],
                 "word_count": chapter.get("word_count", 0),
                 "summary": text,
+                "formatted_html": formatted,
             }
 
     raise HTTPException(status_code=404, detail=f"Chapter {chapter_num} not found")
