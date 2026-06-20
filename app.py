@@ -3,8 +3,10 @@ Umayal's Study Coach — FastAPI Backend
 CBSE Class 9 AI-powered study assistant.
 Supports Groq (free, fast) and Google Gemini as AI backends.
 """
+import asyncio
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -76,7 +78,13 @@ def increment_usage() -> dict:
     return usage
 
 
-app = FastAPI(title="Umayal's Study Coach", version="2.0.0")
+app = FastAPI(title="Umayal's Study Coach", version="2.1.0")
+
+# Thread pool for running synchronous AI calls without blocking the event loop
+_ai_executor = ThreadPoolExecutor(max_workers=3)
+
+# Timeout for AI calls (seconds)
+AI_CALL_TIMEOUT = 45
 
 SYSTEM_PROMPT = """You are Umayal's personal study coach for CBSE Class 9 at DPS Nacharam.
 
@@ -148,8 +156,8 @@ def find_relevant_context(subject_key: str, question: str) -> str:
     return "\n\n".join(context_parts)
 
 
-def call_ai(system_prompt: str, user_prompt: str) -> str:
-    """Call the configured AI backend."""
+def _call_ai_sync(system_prompt: str, user_prompt: str) -> str:
+    """Synchronous AI call — runs in thread pool, do not call directly from async code."""
     if ai_backend == "groq":
         response = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -171,6 +179,19 @@ def call_ai(system_prompt: str, user_prompt: str) -> str:
         raise Exception("No AI backend configured")
 
 
+async def call_ai(system_prompt: str, user_prompt: str) -> str:
+    """Async wrapper: runs the blocking AI call in a thread pool with a timeout."""
+    loop = asyncio.get_event_loop()
+    try:
+        result = await asyncio.wait_for(
+            loop.run_in_executor(_ai_executor, _call_ai_sync, system_prompt, user_prompt),
+            timeout=AI_CALL_TIMEOUT,
+        )
+        return result
+    except asyncio.TimeoutError:
+        raise Exception(f"AI response timed out after {AI_CALL_TIMEOUT} seconds. Please try again.")
+
+
 class QuestionRequest(BaseModel):
     subject: str
     question: str
@@ -184,6 +205,12 @@ class AnswerResponse(BaseModel):
     usage_limit: int
     usage_remaining: int
     ai_backend: str
+
+
+@app.get("/api/health")
+async def health_check():
+    """Lightweight health/ping endpoint for keep-alive. Returns instantly."""
+    return {"status": "ok"}
 
 
 @app.get("/api/subjects")
@@ -228,13 +255,13 @@ def save_cached_chapter(subject: str, chapter_num: str, html: str):
     cache_file = CACHE_DIR / f"{subject}_{chapter_num}.html"
     cache_file.write_text(html, encoding="utf-8")
 
-def format_chapter_with_ai(text: str, chapter_name: str, subject_name: str) -> str:
+async def format_chapter_with_ai(text: str, chapter_name: str, subject_name: str) -> str:
     """Use AI to format raw chapter text into study-friendly HTML."""
     if not ai_backend:
         return None
     prompt = f"Subject: {subject_name}\nChapter: {chapter_name}\n\n--- Raw Textbook Content ---\n{text[:12000]}"
     try:
-        return call_ai(CHAPTER_FORMAT_PROMPT, prompt)
+        return await call_ai(CHAPTER_FORMAT_PROMPT, prompt)
     except Exception as e:
         print(f"[WARN] AI formatting failed: {e}")
         return None
@@ -255,7 +282,7 @@ async def get_chapter(subject: str, chapter_num: str):
 
             # If no cache, format with AI
             if not formatted and ai_backend:
-                formatted = format_chapter_with_ai(text, chapter["chapter_name"], data["subject"])
+                formatted = await format_chapter_with_ai(text, chapter["chapter_name"], data["subject"])
                 if formatted:
                     # Clean up any markdown code fences the AI might add
                     formatted = formatted.strip()
@@ -338,7 +365,7 @@ async def ask_doubt(request: QuestionRequest):
         user_prompt += f"\n\n--- Relevant NCERT Content ---\n{context}"
 
     try:
-        answer = call_ai(SYSTEM_PROMPT, user_prompt)
+        answer = await call_ai(SYSTEM_PROMPT, user_prompt)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
 

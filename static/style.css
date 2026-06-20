@@ -510,6 +510,69 @@ body {
 .loading { text-align: center; padding: 40px; color: var(--text-light); }
 .error-msg { background: #fff5f5; color: #c0392b; padding: 14px 20px; border-radius: var(--radius-sm); border: 1px solid #f5c6cb; margin-top: 12px; }
 
+/* === Wake-up Banner === */
+.wakeup-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    color: #92400e;
+    padding: 12px 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: center;
+    border-bottom: 2px solid #f59e0b;
+    animation: fadeIn 0.3s ease;
+}
+
+.wakeup-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2.5px solid #f59e0b;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* === Retry Button === */
+.retry-btn {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 8px 20px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 20px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.retry-btn:hover {
+    background: var(--primary-dark);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(108, 92, 231, 0.3);
+}
+
+/* === Loading Status Text === */
+.loading-status {
+    font-size: 0.82rem;
+    color: var(--text-light);
+    margin-top: 8px;
+    font-style: italic;
+    min-height: 1.2em;
+}
+
+/* === Error State Bubble === */
+.chat-bubble.error-state {
+    border-color: #f5c6cb;
+}
+
 /* === Responsive === */
 @media (max-width: 600px) {
     .header-content { flex-direction: column; align-items: flex-start; }
