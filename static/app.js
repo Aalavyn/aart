@@ -192,9 +192,9 @@ function renderSubjectsAccordion() {
                         <span class="subject-name">${subject.name}</span>
                         <span class="chapter-count">${subject.total_chapters} chapters</span>
                     </div>
-                    <span class="toggle-icon" id="toggle-${key}">▼</span>
+                    <span class="toggle-icon" id="toggle-${key}">▶</span>
                 </div>
-                <div class="chapter-list-expanded" id="chapters-${key}">
+                <div class="chapter-list-expanded collapsed" id="chapters-${key}">
                     ${chaptersHtml}
                 </div>
             </div>

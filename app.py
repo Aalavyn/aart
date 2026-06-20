@@ -243,6 +243,12 @@ RULES:
 
 CACHE_DIR = Path(__file__).parent / "cache"
 
+# Clear stale cache on startup to fix any mismatched subject/chapter content
+if CACHE_DIR.exists():
+    import shutil
+    shutil.rmtree(CACHE_DIR, ignore_errors=True)
+    print("[OK] Cleared chapter format cache on startup")
+
 def get_cached_chapter(subject: str, chapter_num: str) -> Optional[str]:
     CACHE_DIR.mkdir(exist_ok=True)
     cache_file = CACHE_DIR / f"{subject}_{chapter_num}.html"
@@ -265,6 +271,16 @@ async def format_chapter_with_ai(text: str, chapter_name: str, subject_name: str
     except Exception as e:
         print(f"[WARN] AI formatting failed: {e}")
         return None
+
+
+@app.get("/api/cache/clear")
+async def clear_cache():
+    """Clear all cached formatted chapters."""
+    import shutil
+    if CACHE_DIR.exists():
+        shutil.rmtree(CACHE_DIR, ignore_errors=True)
+    CACHE_DIR.mkdir(exist_ok=True)
+    return {"status": "ok", "message": "Cache cleared"}
 
 
 @app.get("/api/chapter/{subject}/{chapter_num}")
@@ -294,6 +310,7 @@ async def get_chapter(subject: str, chapter_num: str):
 
             return {
                 "subject": data["subject"],
+                "subject_key": subject,
                 "chapter_number": chapter["chapter_number"],
                 "chapter_name": chapter["chapter_name"],
                 "word_count": chapter.get("word_count", 0),
