@@ -6,42 +6,42 @@
     "chapters": [
       {
         "number": "01",
-        "name": "Number Systems",
+        "name": "Orienting Yourself: The Use of Coordinates",
         "word_count": 4044
       },
       {
         "number": "02",
-        "name": "Polynomials",
+        "name": "Introduction to Linear Polynomials",
         "word_count": 6753
       },
       {
         "number": "03",
-        "name": "Coordinate Geometry",
+        "name": "The World of Numbers",
         "word_count": 7512
       },
       {
         "number": "04",
-        "name": "Linear Equations in Two Variables",
+        "name": "Exploring Algebraic Identities",
         "word_count": 7319
       },
       {
         "number": "05",
-        "name": "Introduction to Euclid's Geometry",
+        "name": "I'm Up and Down, and Round and Round",
         "word_count": 7589
       },
       {
         "number": "06",
-        "name": "Lines and Angles",
+        "name": "Measuring Space: Perimeter and Area",
         "word_count": 10676
       },
       {
         "number": "07",
-        "name": "Triangles",
+        "name": "The Mathematics of Maybe: Introduction to Probability",
         "word_count": 5601
       },
       {
         "number": "08",
-        "name": "Quadrilaterals",
+        "name": "Predicting What Comes Next: Exploring Sequences and Progressions",
         "word_count": 7980
       }
     ]
@@ -53,67 +53,67 @@
     "chapters": [
       {
         "number": "01",
-        "name": "Matter in Our Surroundings",
+        "name": "Exploration: Entering the World of Secondary Science",
         "word_count": 3017
       },
       {
         "number": "02",
-        "name": "Is Matter Around Us Pure",
+        "name": "Cell: The Building Block of Life",
         "word_count": 8038
       },
       {
         "number": "03",
-        "name": "Atoms and Molecules",
+        "name": "Tissues in Action",
         "word_count": 7524
       },
       {
         "number": "04",
-        "name": "Structure of the Atom",
+        "name": "Describing Motion",
         "word_count": 10843
       },
       {
         "number": "05",
-        "name": "The Fundamental Unit of Life",
+        "name": "Exploring Mixtures and Their Separation",
         "word_count": 8279
       },
       {
         "number": "06",
-        "name": "Tissues",
+        "name": "How Forces Affect Motion",
         "word_count": 10406
       },
       {
         "number": "07",
-        "name": "Motion",
+        "name": "Work, Energy, and Simple Machines",
         "word_count": 11437
       },
       {
         "number": "08",
-        "name": "Force and Laws of Motion",
+        "name": "Journey Inside the Atom",
         "word_count": 8242
       },
       {
         "number": "09",
-        "name": "Gravitation",
+        "name": "Atomic Foundations of Matter",
         "word_count": 8024
       },
       {
         "number": "10",
-        "name": "Work and Energy",
+        "name": "Sound Waves: Characteristics and Applications",
         "word_count": 9292
       },
       {
         "number": "11",
-        "name": "Sound",
+        "name": "Reproduction: How Life Continues",
         "word_count": 8555
       },
       {
         "number": "12",
-        "name": "Improvement in Food Resources",
+        "name": "Ecosystem and Food Webs",
         "word_count": 8817
       },
       {
         "number": "13",
-        "name": "Why Do We Fall Ill",
+        "name": "Earth as a System: Energy, Matter, and Life",
         "word_count": 8710
       }
     ]
