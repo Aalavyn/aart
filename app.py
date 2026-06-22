@@ -4,8 +4,11 @@ CBSE Class 9 AI-powered study assistant.
 Supports Groq (free, fast) and Google Gemini as AI backends.
 """
 import asyncio
+import hashlib
 import json
+import logging
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
@@ -18,6 +21,17 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# --- Logging & Guardrails ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler("ai_calls.log"),
+        logging.StreamHandler()
+    ]
+)
+ai_logger = logging.getLogger("guardrails")
 
 # --- AI Backend Configuration ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -156,6 +170,44 @@ def find_relevant_context(subject_key: str, question: str) -> str:
     return "\n\n".join(context_parts)
 
 
+# --- Content Validation Guardrails ---
+
+def extract_significant_words(text: str, n: int = 10) -> list:
+    """Extract first N significant words (skip stop words and short tokens)."""
+    STOP_WORDS = {
+        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to",
+        "for", "of", "with", "is", "are", "was", "were", "it", "its",
+        "this", "that", "be", "as", "by", "from", "have", "has", "had",
+        "not", "can", "will", "also", "more", "than", "which", "what",
+    }
+    clean = re.sub(r'<[^>]+>', '', text)
+    tokens = re.findall(r'\b[a-zA-Z]{4,}\b', clean)
+    significant = [t.lower() for t in tokens if t.lower() not in STOP_WORDS]
+    return significant[:n]
+
+
+def validate_formatted_content(raw_text: str, formatted_html: str) -> dict:
+    """
+    Verify formatted HTML contains key terms from raw text.
+    Returns validation result with matched/missing terms.
+    """
+    key_terms = extract_significant_words(raw_text, n=10)
+    formatted_lower = formatted_html.lower()
+
+    matched = [term for term in key_terms if term in formatted_lower]
+    missing = [term for term in key_terms if term not in formatted_lower]
+
+    valid = len(matched) >= 3
+    return {
+        "valid": valid,
+        "matched_terms": matched,
+        "missing_terms": missing,
+        "key_terms_checked": key_terms,
+        "match_count": len(matched),
+        "confidence": "high" if len(matched) >= 7 else ("medium" if len(matched) >= 3 else "low"),
+    }
+
+
 def _call_ai_sync(system_prompt: str, user_prompt: str) -> str:
     """Synchronous AI call — runs in thread pool, do not call directly from async code."""
     if ai_backend == "groq":
@@ -261,15 +313,34 @@ def save_cached_chapter(subject: str, chapter_num: str, html: str):
     cache_file = CACHE_DIR / f"{subject}_{chapter_num}.html"
     cache_file.write_text(html, encoding="utf-8")
 
-async def format_chapter_with_ai(text: str, chapter_name: str, subject_name: str) -> str:
-    """Use AI to format raw chapter text into study-friendly HTML."""
+async def format_chapter_with_ai(text: str, chapter_name: str, subject_name: str) -> Optional[str]:
+    """Use AI to format raw chapter text into study-friendly HTML. Validates output."""
     if not ai_backend:
         return None
     prompt = f"Subject: {subject_name}\nChapter: {chapter_name}\n\n--- Raw Textbook Content ---\n{text[:12000]}"
     try:
-        return await call_ai(CHAPTER_FORMAT_PROMPT, prompt)
+        ai_logger.info(f"AI_FORMAT_START | subject={subject_name} | chapter={chapter_name} | input_chars={len(text)}")
+        result = await call_ai(CHAPTER_FORMAT_PROMPT, prompt)
+
+        # Validate: does the formatted output actually contain content from the source?
+        validation = validate_formatted_content(text, result)
+        ai_logger.info(
+            f"AI_FORMAT_RESULT | subject={subject_name} | chapter={chapter_name} | "
+            f"valid={validation['valid']} | confidence={validation['confidence']} | "
+            f"matched={validation['matched_terms']} | missing={validation['missing_terms']}"
+        )
+
+        if not validation["valid"]:
+            ai_logger.warning(
+                f"AI_FORMAT_VALIDATION_FAIL | {subject_name} / {chapter_name} | "
+                f"Only {validation['match_count']}/10 key terms found. "
+                f"Returning raw text to avoid wrong content."
+            )
+            return None  # Will fall back to raw text display
+
+        return result
     except Exception as e:
-        print(f"[WARN] AI formatting failed: {e}")
+        ai_logger.error(f"AI_FORMAT_ERROR | {subject_name} / {chapter_name} | {e}")
         return None
 
 
@@ -398,6 +469,38 @@ async def ask_doubt(request: QuestionRequest):
         usage_remaining=max(0, DAILY_LIMIT - updated_usage["count"]),
         ai_backend=ai_backend_name,
     )
+
+
+@app.get("/api/verify/chapter/{subject}/{chapter_num}")
+async def verify_chapter(subject: str, chapter_num: str):
+    """Verification endpoint — inspect what the app actually has for a chapter."""
+    data = load_subject_data(subject)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Subject '{subject}' not found")
+
+    for chapter in data.get("chapters", []):
+        if chapter["chapter_number"] == chapter_num:
+            raw_text = chapter.get("text", "")
+            source_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+
+            # Check if formatted version exists in cache
+            formatted = get_cached_chapter(subject, chapter_num) or ""
+            validation = validate_formatted_content(raw_text, formatted) if formatted else None
+
+            return {
+                "subject": data["subject"],
+                "subject_key": subject,
+                "chapter_num": chapter_num,
+                "chapter_name": chapter["chapter_name"],
+                "source_preview": raw_text[:500],
+                "formatted_preview": formatted[:500] if formatted else "Not yet formatted",
+                "source_hash": source_hash,
+                "source_char_count": len(raw_text),
+                "formatted_char_count": len(formatted),
+                "validation": validation,
+            }
+
+    raise HTTPException(status_code=404, detail=f"Chapter {chapter_num} not found in {subject}")
 
 
 # Serve static files
