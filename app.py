@@ -92,7 +92,7 @@ def increment_usage() -> dict:
     return usage
 
 
-app = FastAPI(title="Umayal's Study Coach", version="2.1.0")
+app = FastAPI(title="Umayal's Study Coach", version="2.2.0")
 
 # Thread pool for running synchronous AI calls without blocking the event loop
 _ai_executor = ThreadPoolExecutor(max_workers=3)
@@ -362,6 +362,22 @@ async def format_chapter_with_ai(text: str, chapter_name: str, subject_name: str
         return None
 
 
+@app.get("/api/precache/status")
+async def precache_status():
+    """Check pre-cache progress — how many chapters are formatted and ready."""
+    cached_count = sum(1 for _ in CACHE_DIR.glob("*.html"))
+    return {
+        **_precache_status,
+        "cached_files": cached_count,
+        "message": (
+            "Pre-caching complete! All chapters ready." if _precache_status["complete"]
+            else f"Pre-caching in progress... {_precache_status['done']}/{_precache_status['total']} done"
+            if _precache_status["running"]
+            else "Pre-cache not started yet (server just woke up)"
+        ),
+    }
+
+
 @app.get("/api/cache/clear")
 async def clear_cache():
     """Clear all cached formatted chapters."""
@@ -467,6 +483,104 @@ async def _background_format(subject: str, chapter_num: str, text: str, chapter_
             ai_logger.info(f"BG_FORMAT_DONE | {subject_name} / {chapter_name} — cached for next view")
     except Exception as e:
         ai_logger.error(f"BG_FORMAT_FAIL | {subject_name} / {chapter_name} | {e}")
+
+
+# --- Pre-cache status tracker ---
+_precache_status = {
+    "running": False,
+    "total": 0,
+    "done": 0,
+    "skipped": 0,
+    "failed": 0,
+    "current": "",
+    "complete": False,
+}
+
+
+async def _precache_all_chapters():
+    """On startup: format ALL chapters with AI and cache them. Rate-limited to avoid hammering Gemini."""
+    global _precache_status
+    if not ai_backend:
+        ai_logger.info("PRECACHE: No AI backend — skipping")
+        return
+
+    _precache_status["running"] = True
+    _precache_status["complete"] = False
+
+    DATA_DIR = Path(__file__).parent / "data"
+    all_chapters = []
+
+    # Collect all chapters across all subjects
+    for json_file in DATA_DIR.glob("*.json"):
+        if json_file.name == "index.json":
+            continue
+        try:
+            data = json.loads(json_file.read_text(encoding="utf-8"))
+            subject_key = json_file.stem
+            subject_name = data.get("subject", subject_key)
+            for ch in data.get("chapters", []):
+                all_chapters.append((subject_key, subject_name, ch))
+        except Exception as e:
+            ai_logger.error(f"PRECACHE: Failed to read {json_file.name}: {e}")
+
+    _precache_status["total"] = len(all_chapters)
+    ai_logger.info(f"PRECACHE: Starting — {len(all_chapters)} chapters to process")
+
+    for subject_key, subject_name, chapter in all_chapters:
+        ch_num = chapter.get("chapter_number", "")
+        ch_name = chapter.get("chapter_name", "")
+        text = chapter.get("text", "")
+        _precache_status["current"] = f"{subject_name} / {ch_name}"
+
+        # Skip if already cached
+        if get_cached_chapter(subject_key, ch_num):
+            ai_logger.info(f"PRECACHE: SKIP (already cached) {subject_name} / {ch_name}")
+            _precache_status["skipped"] += 1
+            _precache_status["done"] += 1
+            continue
+
+        if not text:
+            ai_logger.warning(f"PRECACHE: SKIP (no text) {subject_name} / {ch_name}")
+            _precache_status["skipped"] += 1
+            _precache_status["done"] += 1
+            continue
+
+        try:
+            ai_logger.info(f"PRECACHE: Formatting {subject_name} / {ch_name}...")
+            formatted = await format_chapter_with_ai(text, ch_name, subject_name)
+            if formatted:
+                formatted = formatted.strip()
+                if formatted.startswith("```"):
+                    formatted = "\n".join(formatted.split("\n")[1:])
+                if formatted.endswith("```"):
+                    formatted = "\n".join(formatted.split("\n")[:-1])
+                save_cached_chapter(subject_key, ch_num, formatted)
+                ai_logger.info(f"PRECACHE: DONE {subject_name} / {ch_name}")
+            else:
+                ai_logger.warning(f"PRECACHE: FAILED (validation rejected) {subject_name} / {ch_name}")
+                _precache_status["failed"] += 1
+        except Exception as e:
+            ai_logger.error(f"PRECACHE: ERROR {subject_name} / {ch_name} — {e}")
+            _precache_status["failed"] += 1
+
+        _precache_status["done"] += 1
+        # Small delay between chapters to avoid rate-limit (2 sec)
+        await asyncio.sleep(2)
+
+    _precache_status["running"] = False
+    _precache_status["complete"] = True
+    _precache_status["current"] = ""
+    ai_logger.info(
+        f"PRECACHE: Complete — {_precache_status['done']} done, "
+        f"{_precache_status['skipped']} skipped, {_precache_status['failed']} failed"
+    )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Kick off background pre-caching of all chapters on server start."""
+    ai_logger.info("SERVER STARTUP — kicking off chapter pre-cache...")
+    asyncio.ensure_future(_precache_all_chapters())
 
 @app.get("/api/usage")
 async def get_usage():
