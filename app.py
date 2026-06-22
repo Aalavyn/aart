@@ -208,8 +208,12 @@ def validate_formatted_content(raw_text: str, formatted_html: str) -> dict:
     }
 
 
+GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash"]
+
 def _call_ai_sync(system_prompt: str, user_prompt: str) -> str:
-    """Synchronous AI call — runs in thread pool, do not call directly from async code."""
+    """Synchronous AI call with retry + model fallback for 503 errors."""
+    import time
+
     if ai_backend == "groq":
         response = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -222,11 +226,26 @@ def _call_ai_sync(system_prompt: str, user_prompt: str) -> str:
         )
         return response.choices[0].message.content
     elif ai_backend == "gemini":
-        response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=system_prompt + "\n\n" + user_prompt,
-        )
-        return response.text
+        last_error = None
+        for model_name in GEMINI_MODELS:
+            for attempt in range(3):
+                try:
+                    response = gemini_client.models.generate_content(
+                        model=model_name,
+                        contents=system_prompt + "\n\n" + user_prompt,
+                    )
+                    return response.text
+                except Exception as e:
+                    last_error = e
+                    err_str = str(e)
+                    if "503" in err_str or "UNAVAILABLE" in err_str or "overloaded" in err_str.lower():
+                        wait = (attempt + 1) * 2  # 2s, 4s, 6s
+                        ai_logger.warning(f"Gemini {model_name} attempt {attempt+1} failed (503), retrying in {wait}s...")
+                        time.sleep(wait)
+                    else:
+                        raise  # Non-retryable error
+            ai_logger.warning(f"All retries exhausted for {model_name}, trying next model...")
+        raise Exception(f"All Gemini models unavailable after retries. Last error: {last_error}")
     else:
         raise Exception("No AI backend configured")
 
@@ -295,11 +314,10 @@ RULES:
 
 CACHE_DIR = Path(__file__).parent / "cache"
 
-# Clear stale cache on startup to fix any mismatched subject/chapter content
-if CACHE_DIR.exists():
-    import shutil
-    shutil.rmtree(CACHE_DIR, ignore_errors=True)
-    print("[OK] Cleared chapter format cache on startup")
+# Keep cache across restarts — chapter names are now correct
+# Only clear via /api/cache/clear if needed
+CACHE_DIR.mkdir(exist_ok=True)
+print(f"[OK] Cache dir ready: {sum(1 for f in CACHE_DIR.glob('*.html'))} cached chapters")
 
 def get_cached_chapter(subject: str, chapter_num: str) -> Optional[str]:
     CACHE_DIR.mkdir(exist_ok=True)
@@ -354,6 +372,53 @@ async def clear_cache():
     return {"status": "ok", "message": "Cache cleared"}
 
 
+def basic_html_format(text: str) -> str:
+    """Fast local formatting — no AI needed. Produces readable HTML from raw text."""
+    import html as html_mod
+    escaped = html_mod.escape(text)
+    lines = escaped.split('\n')
+    result_parts = []
+    in_paragraph = False
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if in_paragraph:
+                result_parts.append('</p>')
+                in_paragraph = False
+            continue
+
+        # Detect headings (lines that are short, possibly numbered like "1.1 Introduction")
+        is_heading = (
+            len(stripped) < 100
+            and not stripped.endswith('.')
+            and (
+                re.match(r'^\d+(\.\d+)*\s+', stripped)  # numbered heading
+                or stripped.isupper()  # ALL CAPS heading
+                or (len(stripped) < 60 and stripped[0].isupper() and not any(c in stripped for c in '.,:;'))
+            )
+        )
+
+        if is_heading:
+            if in_paragraph:
+                result_parts.append('</p>')
+                in_paragraph = False
+            level = 'h3' if re.match(r'^\d+\s', stripped) or stripped.isupper() else 'h4'
+            result_parts.append(f'<{level}>{stripped}</{level}>')
+        else:
+            if not in_paragraph:
+                result_parts.append('<p>')
+                in_paragraph = True
+            else:
+                result_parts.append(' ')
+            result_parts.append(stripped)
+
+    if in_paragraph:
+        result_parts.append('</p>')
+
+    return '\n'.join(result_parts)
+
+
 @app.get("/api/chapter/{subject}/{chapter_num}")
 async def get_chapter(subject: str, chapter_num: str):
     data = load_subject_data(subject)
@@ -364,20 +429,16 @@ async def get_chapter(subject: str, chapter_num: str):
         if chapter["chapter_number"] == chapter_num:
             text = chapter.get("text", "")
 
-            # Check cache first
+            # Check AI-formatted cache first
             formatted = get_cached_chapter(subject, chapter_num)
 
-            # If no cache, format with AI
-            if not formatted and ai_backend:
-                formatted = await format_chapter_with_ai(text, chapter["chapter_name"], data["subject"])
-                if formatted:
-                    # Clean up any markdown code fences the AI might add
-                    formatted = formatted.strip()
-                    if formatted.startswith("```"):
-                        formatted = "\n".join(formatted.split("\n")[1:])
-                    if formatted.endswith("```"):
-                        formatted = "\n".join(formatted.split("\n")[:-1])
-                    save_cached_chapter(subject, chapter_num, formatted)
+            if not formatted:
+                # Return basic HTML formatting instantly — no AI wait
+                formatted = basic_html_format(text)
+
+                # Kick off AI formatting in the background for next time
+                if ai_backend:
+                    asyncio.ensure_future(_background_format(subject, chapter_num, text, chapter["chapter_name"], data["subject"]))
 
             return {
                 "subject": data["subject"],
@@ -390,6 +451,22 @@ async def get_chapter(subject: str, chapter_num: str):
             }
 
     raise HTTPException(status_code=404, detail=f"Chapter {chapter_num} not found")
+
+
+async def _background_format(subject: str, chapter_num: str, text: str, chapter_name: str, subject_name: str):
+    """Format chapter with AI in the background and cache the result."""
+    try:
+        formatted = await format_chapter_with_ai(text, chapter_name, subject_name)
+        if formatted:
+            formatted = formatted.strip()
+            if formatted.startswith("```"):
+                formatted = "\n".join(formatted.split("\n")[1:])
+            if formatted.endswith("```"):
+                formatted = "\n".join(formatted.split("\n")[:-1])
+            save_cached_chapter(subject, chapter_num, formatted)
+            ai_logger.info(f"BG_FORMAT_DONE | {subject_name} / {chapter_name} — cached for next view")
+    except Exception as e:
+        ai_logger.error(f"BG_FORMAT_FAIL | {subject_name} / {chapter_name} | {e}")
 
 @app.get("/api/usage")
 async def get_usage():
