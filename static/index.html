@@ -26,6 +26,9 @@
                         <button class="nav-btn active" data-view="subjects" onclick="showView('subjects')">
                             📖 Subjects
                         </button>
+                        <button class="nav-btn" data-view="reckoner" onclick="showView('reckoner')">
+                            ⚡ Ready Reckoner
+                        </button>
                         <button class="nav-btn" data-view="doubt" onclick="showView('doubt')">
                             🤖 Ask a Doubt
                         </button>
@@ -49,6 +52,20 @@
             <div class="container">
                 <button class="back-btn" onclick="showView('subjects')">← Back to Subjects</button>
                 <div id="chapter-content" class="chapter-content"></div>
+            </div>
+        </main>
+
+        <!-- Ready Reckoner View -->
+        <main id="reckoner-view" class="view">
+            <div class="container">
+                <div class="reckoner-header">
+                    <h2>⚡ Ready Reckoner</h2>
+                    <p>Quick-reference cheat sheets for every chapter — key facts, dates, terms & exam tips</p>
+                </div>
+                <div class="reckoner-subject-tabs" id="reckoner-subject-tabs"></div>
+                <div id="reckoner-content" class="reckoner-content">
+                    <div class="loading">Select a subject above to load the reckoner...</div>
+                </div>
             </div>
         </main>
 

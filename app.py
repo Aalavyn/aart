@@ -580,6 +580,106 @@ async def verify_chapter(subject: str, chapter_num: str):
     raise HTTPException(status_code=404, detail=f"Chapter {chapter_num} not found in {subject}")
 
 
+# ── Ready Reckoner ────────────────────────────────────────────────────────────
+
+RECKONER_CACHE_DIR = Path(__file__).parent / "cache" / "reckoner"
+RECKONER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+RECKONER_PROMPT = """You are a CBSE Class 9 exam preparation expert.
+Create a concise READY RECKONER (cheat sheet) for this chapter in clean HTML.
+
+STRUCTURE — use exactly these sections (only include what's relevant to the chapter):
+
+<div class="rr-card">
+  <div class="rr-section rr-facts">
+    <h4>📅 Key Facts / Dates / Events</h4>
+    <ul><li><strong>YYYY:</strong> Event description</li></ul>
+  </div>
+  <div class="rr-section rr-people">
+    <h4>👤 Important People / Places</h4>
+    <ul><li><strong>Name:</strong> Who they were / significance</li></ul>
+  </div>
+  <div class="rr-section rr-terms">
+    <h4>📖 Key Terms & Definitions</h4>
+    <ul><li><strong>Term:</strong> Simple definition</li></ul>
+  </div>
+  <div class="rr-section rr-causes">
+    <h4>⚡ Causes / Reasons</h4>
+    <ul><li>Point 1</li></ul>
+  </div>
+  <div class="rr-section rr-effects">
+    <h4>📊 Effects / Results / Significance</h4>
+    <ul><li>Point 1</li></ul>
+  </div>
+  <div class="rr-section rr-exam">
+    <h4>🎯 Most Likely Exam Questions</h4>
+    <ul><li>Question likely to appear in exam</li></ul>
+  </div>
+  <div class="rr-section rr-remember">
+    <h4>💡 Must Remember</h4>
+    <ul><li>Critical one-liner to memorise</li></ul>
+  </div>
+</div>
+
+RULES:
+- Keep each point SHORT — one line max
+- Use ONLY the HTML structure above, no other tags or markdown
+- Skip sections not applicable (e.g. Maths won't have People/Dates)
+- For Maths/Science: include Formulas section instead of People/Dates
+- For Social Studies: always include Dates, People, Causes, Effects
+- Max 8 bullet points per section — be selective, exam-focused
+- Do NOT wrap in code blocks
+"""
+
+def get_reckoner_cache(subject: str, chapter_num: str) -> Optional[str]:
+    f = RECKONER_CACHE_DIR / f"{subject}_{chapter_num}.html"
+    return f.read_text(encoding="utf-8") if f.exists() else None
+
+def save_reckoner_cache(subject: str, chapter_num: str, html: str):
+    f = RECKONER_CACHE_DIR / f"{subject}_{chapter_num}.html"
+    f.write_text(html, encoding="utf-8")
+
+
+@app.get("/api/reckoner/{subject}/{chapter_num}")
+async def get_reckoner(subject: str, chapter_num: str):
+    """Return AI-generated ready reckoner for a chapter. Cached after first generation."""
+    # Check cache
+    cached = get_reckoner_cache(subject, chapter_num)
+    if cached:
+        return {"html": cached, "cached": True}
+
+    if not ai_backend:
+        raise HTTPException(status_code=503, detail="AI not configured")
+
+    data = load_subject_data(subject)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Subject '{subject}' not found")
+
+    chapter = next((c for c in data.get("chapters", []) if c["chapter_number"] == chapter_num), None)
+    if not chapter:
+        raise HTTPException(status_code=404, detail=f"Chapter {chapter_num} not found")
+
+    text = chapter.get("text", "")
+    prompt = (
+        f"Subject: {data['subject']}\n"
+        f"Chapter {chapter_num}: {chapter['chapter_name']}\n\n"
+        f"--- Chapter Content (first 10000 chars) ---\n{text[:10000]}"
+    )
+
+    try:
+        html = await call_ai(RECKONER_PROMPT, prompt)
+        # Strip code fences if any
+        html = html.strip()
+        if html.startswith("```"):
+            html = "\n".join(html.split("\n")[1:])
+        if html.endswith("```"):
+            html = "\n".join(html.split("\n")[:-1])
+        save_reckoner_cache(subject, chapter_num, html)
+        return {"html": html, "cached": False}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+
+
 # Serve static files
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 

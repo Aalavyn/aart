@@ -111,6 +111,7 @@ function showView(view) {
     document.getElementById(`${view}-view`).classList.add('active');
     const navBtn = document.querySelector(`[data-view="${view}"]`);
     if (navBtn) navBtn.classList.add('active');
+    if (view === 'reckoner') initReckoner();
 }
 
 // === Usage Tracking ===
@@ -405,6 +406,97 @@ async function askDoubt(retryParams) {
     btn.textContent = 'Ask My Doubt';
     if (!retryParams) {
         document.getElementById('question-input').value = '';
+    }
+}
+
+// === Ready Reckoner ===
+let reckonerSubject = null;
+
+function initReckoner() {
+    const tabsEl = document.getElementById('reckoner-subject-tabs');
+    if (tabsEl.children.length > 0) return; // already built
+
+    // Build subject tab buttons from loaded subjects
+    const subjects = Object.entries(subjectsData);
+    if (subjects.length === 0) {
+        tabsEl.innerHTML = '<p style="color:var(--text-light)">Subjects not loaded yet. Go to Subjects tab first.</p>';
+        return;
+    }
+
+    tabsEl.innerHTML = subjects
+        .filter(([, s]) => s.total_chapters > 0)
+        .map(([key, s]) => `
+            <button class="rr-subject-tab" id="rr-tab-${key}" onclick="loadReckonerSubject('${key}')">
+                ${s.emoji} ${s.name}
+            </button>
+        `).join('');
+}
+
+async function loadReckonerSubject(subjectKey) {
+    // Highlight active tab
+    document.querySelectorAll('.rr-subject-tab').forEach(t => t.classList.remove('active'));
+    const tab = document.getElementById(`rr-tab-${subjectKey}`);
+    if (tab) tab.classList.add('active');
+
+    reckonerSubject = subjectKey;
+    const subject = subjectsData[subjectKey];
+    const content = document.getElementById('reckoner-content');
+
+    // Build chapter accordion skeleton — chapters expand to show reckoner on click
+    content.innerHTML = `
+        <div class="rr-chapter-list">
+            ${subject.chapters.map(ch => `
+                <div class="rr-chapter-block" id="rr-block-${subjectKey}-${ch.number}">
+                    <div class="rr-chapter-header" onclick="toggleReckoner('${subjectKey}', '${ch.number}', '${escapeAttr(ch.name)}')">
+                        <span class="rr-ch-num">Ch ${parseInt(ch.number)}</span>
+                        <span class="rr-ch-name">${ch.name}</span>
+                        <span class="rr-toggle" id="rr-toggle-${subjectKey}-${ch.number}">▶ View Reckoner</span>
+                    </div>
+                    <div class="rr-chapter-body collapsed" id="rr-body-${subjectKey}-${ch.number}">
+                        <div class="rr-placeholder">Click to generate reckoner...</div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+async function toggleReckoner(subjectKey, chapterNum, chapterName) {
+    const body = document.getElementById(`rr-body-${subjectKey}-${chapterNum}`);
+    const toggle = document.getElementById(`rr-toggle-${subjectKey}-${chapterNum}`);
+
+    if (!body.classList.contains('collapsed')) {
+        body.classList.add('collapsed');
+        toggle.textContent = '▶ View Reckoner';
+        return;
+    }
+
+    body.classList.remove('collapsed');
+    toggle.textContent = '▼ Hide';
+
+    // Already loaded?
+    if (body.dataset.loaded === 'true') return;
+
+    body.innerHTML = `<div class="rr-loading"><span class="rr-spinner"></span> Generating reckoner for "${chapterName}"... (first time takes ~10 sec)</div>`;
+
+    try {
+        const res = await fetchWithTimeout(`/api/reckoner/${subjectKey}/${chapterNum}`, {}, 60000);
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to load reckoner');
+        }
+        const data = await res.json();
+        body.innerHTML = data.html;
+        body.dataset.loaded = 'true';
+        if (data.cached) {
+            toggle.textContent = '▼ Hide (cached ⚡)';
+        }
+    } catch (err) {
+        body.innerHTML = `
+            <div class="error-msg">
+                ${escapeHtml(err.message)}
+                <br><button class="retry-btn" onclick="body.dataset.loaded=''; toggleReckoner('${subjectKey}', '${chapterNum}', '${escapeAttr(chapterName)}')">Retry</button>
+            </div>`;
     }
 }
 
