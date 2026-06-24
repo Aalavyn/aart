@@ -794,6 +794,176 @@ async def get_reckoner(subject: str, chapter_num: str):
         raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
 
 
+# ── Practice Problems ────────────────────────────────────────────────────────
+
+PRACTICE_CACHE_DIR = Path(__file__).parent / "cache" / "practice"
+PRACTICE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+BRAINTEASER_CACHE_DIR = Path(__file__).parent / "cache" / "brainteaser"
+BRAINTEASER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+PRACTICE_PROMPT = """You are a CBSE Class 9 exam question paper setter.
+Generate 10 practice problems for this chapter in clean HTML.
+
+STRUCTURE:
+<div class="practice-set">
+  <div class="practice-q" data-type="fill-blank">
+    <div class="q-badge">Fill in the Blank</div>
+    <div class="q-number">1</div>
+    <div class="q-text">Question text with _______ for blanks</div>
+    <div class="q-answer" style="display:none">
+      <strong>Answer:</strong> The answer here
+    </div>
+  </div>
+  <!-- more questions... -->
+</div>
+
+QUESTION MIX:
+- 2x Fill in the Blank (data-type="fill-blank")
+- 2x True/False with explanation (data-type="true-false")
+- 3x Short Answer, 2-3 lines expected (data-type="short-answer")
+- 2x Long Answer / Application-based, 5-6 lines (data-type="long-answer")
+- 1x Diagram/Visual/Map-based question (data-type="diagram")
+
+RULES:
+- Questions should cover the ENTIRE chapter, not just the beginning
+- Include questions from different difficulty levels (easy -> medium -> hard)
+- Short answers should test understanding, not just recall
+- Long answers should require application/analysis
+- Include mark weightage hints: [1 mark], [2 marks], [3 marks], [5 marks]
+- Do NOT wrap in code blocks
+- Output raw HTML only
+"""
+
+BRAINTEASER_PROMPT = """You are a creative educator designing challenging "out of the box" thinking problems for a bright Class 9 student.
+Generate 5 brain teasers based on this chapter's concepts in clean HTML.
+
+STRUCTURE:
+<div class="brainteaser-set">
+  <div class="bt-card">
+    <div class="bt-number">1</div>
+    <div class="bt-type">What If?</div>
+    <div class="bt-question">The challenging question here...</div>
+    <div class="bt-hint" style="display:none">
+      <strong>Hint:</strong> A nudge in the right direction
+    </div>
+    <div class="bt-answer" style="display:none">
+      <strong>Think about it:</strong> The explanation/answer
+    </div>
+  </div>
+</div>
+
+QUESTION TYPES (use a mix):
+- "What If?" — change one condition and ask what happens
+- "Real World Detective" — apply chapter concepts to solve a real scenario
+- "Cross-Subject Connection" — link this chapter to another subject
+- "Puzzle/Riddle" — a fun brain teaser using chapter concepts
+- "Debate This" — a provocative statement to argue for/against
+
+RULES:
+- These must NOT be textbook questions — they should surprise and challenge
+- Each question should make the student pause and THINK
+- Hints should nudge without giving away the answer
+- Answers should explain the reasoning, not just state facts
+- Make them fun and engaging — a 14-year-old should want to solve them
+- Do NOT wrap in code blocks
+- Output raw HTML only
+"""
+
+
+def get_practice_cache(subject: str, chapter_num: str) -> Optional[str]:
+    f = PRACTICE_CACHE_DIR / f"{subject}_{chapter_num}.html"
+    return f.read_text(encoding="utf-8") if f.exists() else None
+
+def save_practice_cache(subject: str, chapter_num: str, html: str):
+    f = PRACTICE_CACHE_DIR / f"{subject}_{chapter_num}.html"
+    f.write_text(html, encoding="utf-8")
+
+def get_brainteaser_cache(subject: str, chapter_num: str) -> Optional[str]:
+    f = BRAINTEASER_CACHE_DIR / f"{subject}_{chapter_num}.html"
+    return f.read_text(encoding="utf-8") if f.exists() else None
+
+def save_brainteaser_cache(subject: str, chapter_num: str, html: str):
+    f = BRAINTEASER_CACHE_DIR / f"{subject}_{chapter_num}.html"
+    f.write_text(html, encoding="utf-8")
+
+
+@app.get("/api/practice/{subject}/{chapter_num}")
+async def get_practice(subject: str, chapter_num: str):
+    """Return AI-generated practice problems for a chapter. Cached after first generation."""
+    cached = get_practice_cache(subject, chapter_num)
+    if cached:
+        return {"html": cached, "cached": True}
+
+    if not ai_backend:
+        raise HTTPException(status_code=503, detail="AI not configured")
+
+    data = load_subject_data(subject)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Subject '{subject}' not found")
+
+    chapter = next((c for c in data.get("chapters", []) if c["chapter_number"] == chapter_num), None)
+    if not chapter:
+        raise HTTPException(status_code=404, detail=f"Chapter {chapter_num} not found")
+
+    text = chapter.get("text", "")
+    prompt = (
+        f"Subject: {data['subject']}\n"
+        f"Chapter {chapter_num}: {chapter['chapter_name']}\n\n"
+        f"--- Chapter Content (first 10000 chars) ---\n{text[:10000]}"
+    )
+
+    try:
+        html = await call_ai(PRACTICE_PROMPT, prompt)
+        html = html.strip()
+        if html.startswith("```"):
+            html = "\n".join(html.split("\n")[1:])
+        if html.endswith("```"):
+            html = "\n".join(html.split("\n")[:-1])
+        save_practice_cache(subject, chapter_num, html)
+        return {"html": html, "cached": False}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+
+
+@app.get("/api/brainteaser/{subject}/{chapter_num}")
+async def get_brainteaser(subject: str, chapter_num: str):
+    """Return AI-generated brain teasers for a chapter. Cached after first generation."""
+    cached = get_brainteaser_cache(subject, chapter_num)
+    if cached:
+        return {"html": cached, "cached": True}
+
+    if not ai_backend:
+        raise HTTPException(status_code=503, detail="AI not configured")
+
+    data = load_subject_data(subject)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Subject '{subject}' not found")
+
+    chapter = next((c for c in data.get("chapters", []) if c["chapter_number"] == chapter_num), None)
+    if not chapter:
+        raise HTTPException(status_code=404, detail=f"Chapter {chapter_num} not found")
+
+    text = chapter.get("text", "")
+    prompt = (
+        f"Subject: {data['subject']}\n"
+        f"Chapter {chapter_num}: {chapter['chapter_name']}\n\n"
+        f"--- Chapter Content (first 10000 chars) ---\n{text[:10000]}"
+    )
+
+    try:
+        html = await call_ai(BRAINTEASER_PROMPT, prompt)
+        html = html.strip()
+        if html.startswith("```"):
+            html = "\n".join(html.split("\n")[1:])
+        if html.endswith("```"):
+            html = "\n".join(html.split("\n")[:-1])
+        save_brainteaser_cache(subject, chapter_num, html)
+        return {"html": html, "cached": False}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+
+
 # Serve static files
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 

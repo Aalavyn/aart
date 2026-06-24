@@ -709,3 +709,214 @@ body {
     .rr-subject-tab { padding: 6px 12px; font-size: 0.78rem; }
     .rr-ch-name { font-size: 0.85rem; }
 }
+
+/* === Practice Problems === */
+.practice-header {
+    text-align: center;
+    padding: 24px 0 16px;
+}
+.practice-header h2 { font-size: 1.6rem; color: var(--primary-dark); }
+.practice-header p { color: var(--text-light); margin-top: 6px; }
+
+.practice-mode-btns {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+.practice-mode-btn {
+    padding: 10px 24px;
+    border: 2px solid var(--primary);
+    border-radius: 25px;
+    background: white;
+    color: var(--primary);
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.practice-mode-btn:hover { background: #f0ecff; }
+.practice-mode-btn.active { background: var(--primary); color: white; }
+
+.practice-subject-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+    padding: 12px 0;
+    border-bottom: 2px solid var(--border);
+}
+
+/* Practice Question Cards */
+.practice-set {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 12px 0 20px;
+}
+
+.practice-q {
+    background: white;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 18px 20px;
+    position: relative;
+    box-shadow: var(--shadow);
+}
+
+.q-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+}
+
+.q-badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    margin-bottom: 8px;
+    margin-left: 8px;
+}
+.practice-q[data-type="fill-blank"] .q-badge { background: #dbeafe; color: #1e40af; }
+.practice-q[data-type="true-false"] .q-badge { background: #fef3c7; color: #92400e; }
+.practice-q[data-type="short-answer"] .q-badge { background: #d1fae5; color: #065f46; }
+.practice-q[data-type="long-answer"] .q-badge { background: #ede9fe; color: #5b21b6; }
+.practice-q[data-type="diagram"] .q-badge { background: #fce7f3; color: #9d174d; }
+
+.q-text {
+    font-size: 0.95rem;
+    line-height: 1.7;
+    color: var(--text);
+    margin-bottom: 12px;
+}
+
+.q-answer {
+    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+    border: 1.5px solid #86efac;
+    border-radius: var(--radius-sm);
+    padding: 14px 18px;
+    margin-top: 8px;
+    font-size: 0.92rem;
+    line-height: 1.7;
+    color: #166534;
+}
+.q-answer strong { color: #15803d; }
+
+/* Reveal Button */
+.reveal-btn {
+    display: inline-block;
+    padding: 6px 16px;
+    background: #f0ecff;
+    color: var(--primary);
+    border: 1.5px solid var(--primary-light);
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 4px;
+}
+.reveal-btn:hover { background: var(--primary); color: white; }
+
+/* Brain Teaser Cards */
+.brainteaser-set {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 12px 0 20px;
+}
+
+.bt-card {
+    background: white;
+    border: 2px solid transparent;
+    border-image: linear-gradient(135deg, var(--primary), var(--accent)) 1;
+    border-radius: 0;
+    padding: 20px 22px;
+    position: relative;
+    box-shadow: var(--shadow);
+}
+/* Workaround: border-image doesn't work with border-radius, use outline trick */
+.bt-card {
+    border: none;
+    border-radius: var(--radius-sm);
+    outline: 2.5px solid var(--primary-light);
+    outline-offset: -2px;
+    background: linear-gradient(135deg, #faf5ff, #fdf4ff);
+}
+
+.bt-number {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 6px;
+}
+
+.bt-type {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 3px 12px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    color: white;
+    margin-bottom: 10px;
+}
+
+.bt-question {
+    font-size: 0.97rem;
+    line-height: 1.7;
+    color: var(--text);
+    margin-bottom: 12px;
+    font-weight: 500;
+}
+
+.bt-hint {
+    background: linear-gradient(135deg, #fffbeb, #fef3c7);
+    border: 1.5px solid #fcd34d;
+    border-radius: var(--radius-sm);
+    padding: 14px 18px;
+    margin-top: 8px;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: #92400e;
+}
+.bt-hint strong { color: #b45309; }
+
+.bt-answer {
+    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+    border: 1.5px solid #86efac;
+    border-radius: var(--radius-sm);
+    padding: 14px 18px;
+    margin-top: 8px;
+    font-size: 0.92rem;
+    line-height: 1.7;
+    color: #166534;
+}
+.bt-answer strong { color: #15803d; }
+
+.hint-reveal-btn {
+    background: #fef3c7;
+    color: #92400e;
+    border-color: #fcd34d;
+}
+.hint-reveal-btn:hover { background: #f59e0b; color: white; }
+
+@media (max-width: 600px) {
+    .practice-mode-btns { flex-direction: column; align-items: stretch; }
+    .practice-mode-btn { text-align: center; }
+    .practice-subject-tabs { gap: 6px; }
+}

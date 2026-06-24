@@ -29,6 +29,9 @@
                         <button class="nav-btn" data-view="reckoner" onclick="showView('reckoner')">
                             ⚡ Ready Reckoner
                         </button>
+                        <button class="nav-btn" data-view="practice" onclick="showView('practice')">
+                            🏋️ Practice
+                        </button>
                         <button class="nav-btn" data-view="doubt" onclick="showView('doubt')">
                             🤖 Ask a Doubt
                         </button>
@@ -65,6 +68,24 @@
                 <div class="reckoner-subject-tabs" id="reckoner-subject-tabs"></div>
                 <div id="reckoner-content" class="reckoner-content">
                     <div class="loading">Select a subject above to load the reckoner...</div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Practice View -->
+        <main id="practice-view" class="view">
+            <div class="container">
+                <div class="practice-header">
+                    <h2>🏋️ Practice Problems</h2>
+                    <p>Test your understanding with AI-generated questions and brain teasers</p>
+                </div>
+                <div class="practice-mode-btns">
+                    <button class="practice-mode-btn active" id="mode-practice" onclick="switchPracticeMode('practice')">📝 Chapter Practice</button>
+                    <button class="practice-mode-btn" id="mode-brainteaser" onclick="switchPracticeMode('brainteaser')">🧠 Brain Teasers</button>
+                </div>
+                <div class="practice-subject-tabs" id="practice-subject-tabs"></div>
+                <div id="practice-content" class="practice-content">
+                    <div class="loading">Select a subject above to load practice problems...</div>
                 </div>
             </div>
         </main>

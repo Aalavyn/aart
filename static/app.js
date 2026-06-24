@@ -112,6 +112,7 @@ function showView(view) {
     const navBtn = document.querySelector(`[data-view="${view}"]`);
     if (navBtn) navBtn.classList.add('active');
     if (view === 'reckoner') initReckoner();
+    if (view === 'practice') initPractice();
 }
 
 // === Usage Tracking ===
@@ -497,6 +498,138 @@ async function toggleReckoner(subjectKey, chapterNum, chapterName) {
                 ${escapeHtml(err.message)}
                 <br><button class="retry-btn" onclick="body.dataset.loaded=''; toggleReckoner('${subjectKey}', '${chapterNum}', '${escapeAttr(chapterName)}')">Retry</button>
             </div>`;
+    }
+}
+
+// === Practice Problems ===
+let practiceSubject = null;
+let practiceMode = 'practice'; // 'practice' or 'brainteaser'
+
+function initPractice() {
+    const tabsEl = document.getElementById('practice-subject-tabs');
+    if (tabsEl.children.length > 0) return; // already built
+
+    const subjects = Object.entries(subjectsData);
+    if (subjects.length === 0) {
+        tabsEl.innerHTML = '<p style="color:var(--text-light)">Subjects not loaded yet. Go to Subjects tab first.</p>';
+        return;
+    }
+
+    tabsEl.innerHTML = subjects
+        .filter(([, s]) => s.total_chapters > 0)
+        .map(([key, s]) => `
+            <button class="rr-subject-tab" id="pr-tab-${key}" onclick="loadPracticeSubject('${key}')">
+                ${s.emoji} ${s.name}
+            </button>
+        `).join('');
+}
+
+function switchPracticeMode(mode) {
+    practiceMode = mode;
+    document.getElementById('mode-practice').classList.toggle('active', mode === 'practice');
+    document.getElementById('mode-brainteaser').classList.toggle('active', mode === 'brainteaser');
+
+    // Reset loaded state so chapters re-fetch with new mode
+    document.querySelectorAll('.pr-chapter-body').forEach(el => {
+        el.dataset.loaded = '';
+        el.classList.add('collapsed');
+        el.innerHTML = '<div class="rr-placeholder">Click to generate...</div>';
+    });
+    document.querySelectorAll('.pr-toggle').forEach(el => {
+        el.textContent = mode === 'brainteaser' ? '▶ Brain Teaser' : '▶ Practice';
+    });
+}
+
+async function loadPracticeSubject(subjectKey) {
+    // Highlight active tab
+    document.querySelectorAll('#practice-subject-tabs .rr-subject-tab').forEach(t => t.classList.remove('active'));
+    const tab = document.getElementById(`pr-tab-${subjectKey}`);
+    if (tab) tab.classList.add('active');
+
+    practiceSubject = subjectKey;
+    const subject = subjectsData[subjectKey];
+    const content = document.getElementById('practice-content');
+    const toggleLabel = practiceMode === 'brainteaser' ? '▶ Brain Teaser' : '▶ Practice';
+
+    content.innerHTML = `
+        <div class="rr-chapter-list">
+            ${subject.chapters.map(ch => `
+                <div class="rr-chapter-block" id="pr-block-${subjectKey}-${ch.number}">
+                    <div class="rr-chapter-header" onclick="togglePractice('${subjectKey}', '${ch.number}', '${escapeAttr(ch.name)}')">
+                        <span class="rr-ch-num">Ch ${parseInt(ch.number)}</span>
+                        <span class="rr-ch-name">${ch.name}</span>
+                        <span class="pr-toggle rr-toggle" id="pr-toggle-${subjectKey}-${ch.number}">${toggleLabel}</span>
+                    </div>
+                    <div class="pr-chapter-body rr-chapter-body collapsed" id="pr-body-${subjectKey}-${ch.number}">
+                        <div class="rr-placeholder">Click to generate...</div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+async function togglePractice(subjectKey, chapterNum, chapterName) {
+    const body = document.getElementById(`pr-body-${subjectKey}-${chapterNum}`);
+    const toggle = document.getElementById(`pr-toggle-${subjectKey}-${chapterNum}`);
+
+    if (!body.classList.contains('collapsed')) {
+        body.classList.add('collapsed');
+        toggle.textContent = practiceMode === 'brainteaser' ? '▶ Brain Teaser' : '▶ Practice';
+        return;
+    }
+
+    body.classList.remove('collapsed');
+    toggle.textContent = '▼ Hide';
+
+    // Already loaded?
+    if (body.dataset.loaded === practiceMode) return;
+
+    const endpoint = practiceMode === 'brainteaser' ? 'brainteaser' : 'practice';
+    const label = practiceMode === 'brainteaser' ? 'brain teasers' : 'practice problems';
+
+    body.innerHTML = `<div class="rr-loading"><span class="rr-spinner"></span> Generating ${label} for "${chapterName}"... (first time takes ~10 sec)</div>`;
+
+    try {
+        const res = await fetchWithTimeout(`/api/${endpoint}/${subjectKey}/${chapterNum}`, {}, 60000);
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to load');
+        }
+        const data = await res.json();
+        // Inject the HTML and add reveal buttons
+        let html = data.html;
+        // Add reveal buttons for practice answers
+        html = html.replace(/<div class="q-answer" style="display:none">/g,
+            '<button class="reveal-btn" onclick="togglePracticeAnswer(this)">Click to reveal answer</button><div class="q-answer" style="display:none">');
+        // Add reveal buttons for brain teaser hints
+        html = html.replace(/<div class="bt-hint" style="display:none">/g,
+            '<button class="reveal-btn hint-reveal-btn" onclick="togglePracticeAnswer(this)">Show hint</button><div class="bt-hint" style="display:none">');
+        // Add reveal buttons for brain teaser answers
+        html = html.replace(/<div class="bt-answer" style="display:none">/g,
+            '<button class="reveal-btn" onclick="togglePracticeAnswer(this)">Click to reveal answer</button><div class="bt-answer" style="display:none">');
+        body.innerHTML = html;
+        body.dataset.loaded = practiceMode;
+        if (data.cached) {
+            toggle.textContent = '▼ Hide (cached)';
+        }
+    } catch (err) {
+        body.innerHTML = `
+            <div class="error-msg">
+                ${escapeHtml(err.message)}
+                <br><button class="retry-btn" onclick="this.closest('.pr-chapter-body').dataset.loaded=''; togglePractice('${subjectKey}', '${chapterNum}', '${escapeAttr(chapterName)}')">Retry</button>
+            </div>`;
+    }
+}
+
+function togglePracticeAnswer(btn) {
+    const target = btn.nextElementSibling;
+    if (target.style.display === 'none') {
+        target.style.display = 'block';
+        btn.textContent = btn.classList.contains('hint-reveal-btn') ? 'Hide hint' : 'Hide answer';
+    } else {
+        target.style.display = 'none';
+        btn.textContent = btn.classList.contains('hint-reveal-btn') ? 'Show hint' : 'Click to reveal answer';
     }
 }
 
