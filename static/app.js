@@ -505,6 +505,25 @@ async function toggleReckoner(subjectKey, chapterNum, chapterName) {
 let practiceSubject = null;
 let practiceMode = 'practice'; // 'practice' or 'brainteaser'
 
+// Hydra Mode state
+let practiceState = {
+    subject: null,
+    chapter: null,
+    chapterName: null,
+    questions: [],
+    currentIndex: 0,
+    score: 0,
+    totalAnswered: 0,
+    streak: 0,
+    bestStreak: 0,
+    wrongCount: 0,
+    hydraSpawned: 0,
+    wrongConcepts: [],
+    excludeIds: [],
+    completed: false,
+    answering: false  // lock to prevent double-clicks
+};
+
 function initPractice() {
     const tabsEl = document.getElementById('practice-subject-tabs');
     if (tabsEl.children.length > 0) return; // already built
@@ -529,15 +548,24 @@ function switchPracticeMode(mode) {
     document.getElementById('mode-practice').classList.toggle('active', mode === 'practice');
     document.getElementById('mode-brainteaser').classList.toggle('active', mode === 'brainteaser');
 
-    // Reset loaded state so chapters re-fetch with new mode
-    document.querySelectorAll('.pr-chapter-body').forEach(el => {
-        el.dataset.loaded = '';
-        el.classList.add('collapsed');
-        el.innerHTML = '<div class="rr-placeholder">Click to generate...</div>';
-    });
-    document.querySelectorAll('.pr-toggle').forEach(el => {
-        el.textContent = mode === 'brainteaser' ? '▶ Brain Teaser' : '▶ Practice';
-    });
+    const content = document.getElementById('practice-content');
+
+    if (mode === 'brainteaser') {
+        // Reset brain teaser loaded state
+        document.querySelectorAll('.pr-chapter-body').forEach(el => {
+            el.dataset.loaded = '';
+            el.classList.add('collapsed');
+            el.innerHTML = '<div class="rr-placeholder">Click to generate...</div>';
+        });
+        document.querySelectorAll('.pr-toggle').forEach(el => {
+            el.textContent = '▶ Brain Teaser';
+        });
+        // Reload the chapter list for brain teaser mode
+        if (practiceSubject) loadPracticeSubject(practiceSubject);
+    } else {
+        // Practice mode — reload the chapter list for interactive quiz
+        if (practiceSubject) loadPracticeSubject(practiceSubject);
+    }
 }
 
 async function loadPracticeSubject(subjectKey) {
@@ -549,67 +577,75 @@ async function loadPracticeSubject(subjectKey) {
     practiceSubject = subjectKey;
     const subject = subjectsData[subjectKey];
     const content = document.getElementById('practice-content');
-    const toggleLabel = practiceMode === 'brainteaser' ? '▶ Brain Teaser' : '▶ Practice';
 
-    content.innerHTML = `
-        <div class="rr-chapter-list">
-            ${subject.chapters.map(ch => `
-                <div class="rr-chapter-block" id="pr-block-${subjectKey}-${ch.number}">
-                    <div class="rr-chapter-header" onclick="togglePractice('${subjectKey}', '${ch.number}', '${escapeAttr(ch.name)}')">
-                        <span class="rr-ch-num">Ch ${parseInt(ch.number)}</span>
-                        <span class="rr-ch-name">${ch.name}</span>
-                        <span class="pr-toggle rr-toggle" id="pr-toggle-${subjectKey}-${ch.number}">${toggleLabel}</span>
+    if (practiceMode === 'brainteaser') {
+        // Brain teaser mode — old accordion UI
+        content.innerHTML = `
+            <div class="rr-chapter-list">
+                ${subject.chapters.map(ch => `
+                    <div class="rr-chapter-block" id="pr-block-${subjectKey}-${ch.number}">
+                        <div class="rr-chapter-header" onclick="toggleBrainTeaser('${subjectKey}', '${ch.number}', '${escapeAttr(ch.name)}')">
+                            <span class="rr-ch-num">Ch ${parseInt(ch.number)}</span>
+                            <span class="rr-ch-name">${ch.name}</span>
+                            <span class="pr-toggle rr-toggle" id="pr-toggle-${subjectKey}-${ch.number}">▶ Brain Teaser</span>
+                        </div>
+                        <div class="pr-chapter-body rr-chapter-body collapsed" id="pr-body-${subjectKey}-${ch.number}">
+                            <div class="rr-placeholder">Click to generate...</div>
+                        </div>
                     </div>
-                    <div class="pr-chapter-body rr-chapter-body collapsed" id="pr-body-${subjectKey}-${ch.number}">
-                        <div class="rr-placeholder">Click to generate...</div>
+                `).join('')}
+            </div>
+        `;
+    } else {
+        // Practice mode — interactive quiz chapter list
+        content.innerHTML = `
+            <div class="rr-chapter-list">
+                ${subject.chapters.map(ch => `
+                    <div class="rr-chapter-block quiz-chapter-block" id="pr-block-${subjectKey}-${ch.number}">
+                        <div class="rr-chapter-header" onclick="startQuiz('${subjectKey}', '${ch.number}', '${escapeAttr(ch.name)}')">
+                            <span class="rr-ch-num">Ch ${parseInt(ch.number)}</span>
+                            <span class="rr-ch-name">${ch.name}</span>
+                            <span class="rr-toggle quiz-start-label">▶ Start Practice</span>
+                        </div>
                     </div>
-                </div>
-            `).join('')}
-        </div>
-    `;
+                `).join('')}
+            </div>
+        `;
+    }
 }
 
-async function togglePractice(subjectKey, chapterNum, chapterName) {
+// --- Brain Teaser (old static accordion, unchanged) ---
+async function toggleBrainTeaser(subjectKey, chapterNum, chapterName) {
     const body = document.getElementById(`pr-body-${subjectKey}-${chapterNum}`);
     const toggle = document.getElementById(`pr-toggle-${subjectKey}-${chapterNum}`);
 
     if (!body.classList.contains('collapsed')) {
         body.classList.add('collapsed');
-        toggle.textContent = practiceMode === 'brainteaser' ? '▶ Brain Teaser' : '▶ Practice';
+        toggle.textContent = '▶ Brain Teaser';
         return;
     }
 
     body.classList.remove('collapsed');
     toggle.textContent = '▼ Hide';
 
-    // Already loaded?
-    if (body.dataset.loaded === practiceMode) return;
+    if (body.dataset.loaded === 'brainteaser') return;
 
-    const endpoint = practiceMode === 'brainteaser' ? 'brainteaser' : 'practice';
-    const label = practiceMode === 'brainteaser' ? 'brain teasers' : 'practice problems';
-
-    body.innerHTML = `<div class="rr-loading"><span class="rr-spinner"></span> Generating ${label} for "${chapterName}"... (first time takes ~10 sec)</div>`;
+    body.innerHTML = `<div class="rr-loading"><span class="rr-spinner"></span> Generating brain teasers for "${chapterName}"... (first time takes ~10 sec)</div>`;
 
     try {
-        const res = await fetchWithTimeout(`/api/${endpoint}/${subjectKey}/${chapterNum}`, {}, 60000);
+        const res = await fetchWithTimeout(`/api/brainteaser/${subjectKey}/${chapterNum}`, {}, 60000);
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.detail || 'Failed to load');
         }
         const data = await res.json();
-        // Inject the HTML and add reveal buttons
         let html = data.html;
-        // Add reveal buttons for practice answers
-        html = html.replace(/<div class="q-answer" style="display:none">/g,
-            '<button class="reveal-btn" onclick="togglePracticeAnswer(this)">Click to reveal answer</button><div class="q-answer" style="display:none">');
-        // Add reveal buttons for brain teaser hints
         html = html.replace(/<div class="bt-hint" style="display:none">/g,
             '<button class="reveal-btn hint-reveal-btn" onclick="togglePracticeAnswer(this)">Show hint</button><div class="bt-hint" style="display:none">');
-        // Add reveal buttons for brain teaser answers
         html = html.replace(/<div class="bt-answer" style="display:none">/g,
             '<button class="reveal-btn" onclick="togglePracticeAnswer(this)">Click to reveal answer</button><div class="bt-answer" style="display:none">');
         body.innerHTML = html;
-        body.dataset.loaded = practiceMode;
+        body.dataset.loaded = 'brainteaser';
         if (data.cached) {
             toggle.textContent = '▼ Hide (cached)';
         }
@@ -617,7 +653,7 @@ async function togglePractice(subjectKey, chapterNum, chapterName) {
         body.innerHTML = `
             <div class="error-msg">
                 ${escapeHtml(err.message)}
-                <br><button class="retry-btn" onclick="this.closest('.pr-chapter-body').dataset.loaded=''; togglePractice('${subjectKey}', '${chapterNum}', '${escapeAttr(chapterName)}')">Retry</button>
+                <br><button class="retry-btn" onclick="this.closest('.pr-chapter-body').dataset.loaded=''; toggleBrainTeaser('${subjectKey}', '${chapterNum}', '${escapeAttr(chapterName)}')">Retry</button>
             </div>`;
     }
 }
@@ -630,6 +666,272 @@ function togglePracticeAnswer(btn) {
     } else {
         target.style.display = 'none';
         btn.textContent = btn.classList.contains('hint-reveal-btn') ? 'Show hint' : 'Click to reveal answer';
+    }
+}
+
+// --- Interactive Quiz (Hydra Mode) ---
+
+async function startQuiz(subjectKey, chapterNum, chapterName) {
+    // Reset state
+    practiceState = {
+        subject: subjectKey,
+        chapter: chapterNum,
+        chapterName: chapterName,
+        questions: [],
+        currentIndex: 0,
+        score: 0,
+        totalAnswered: 0,
+        streak: 0,
+        bestStreak: 0,
+        wrongCount: 0,
+        hydraSpawned: 0,
+        wrongConcepts: [],
+        excludeIds: [],
+        completed: false,
+        answering: false
+    };
+
+    const content = document.getElementById('practice-content');
+    const subjectName = subjectsData[subjectKey]?.name || subjectKey;
+    content.innerHTML = `
+        <div class="quiz-loading-screen">
+            <div class="quiz-loading-icon"><span class="rr-spinner quiz-spinner"></span></div>
+            <h3>Generating practice questions...</h3>
+            <p>${subjectName} - Ch ${parseInt(chapterNum)}: ${chapterName}</p>
+            <p class="quiz-loading-sub">First time may take ~10 seconds</p>
+        </div>
+    `;
+
+    try {
+        const res = await fetchWithTimeout('/api/practice/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                subject: subjectKey,
+                chapter_num: chapterNum,
+                count: 5,
+                difficulty: 'mixed',
+                exclude_ids: [],
+                focus_concept: null
+            })
+        }, 60000);
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to generate questions');
+        }
+        const data = await res.json();
+        practiceState.questions = data.questions;
+        practiceState.excludeIds = data.questions.map(q => q.id);
+        renderQuizQuestion();
+    } catch (err) {
+        content.innerHTML = `
+            <div class="error-msg">
+                ${escapeHtml(err.message)}
+                <br><button class="retry-btn" onclick="startQuiz('${subjectKey}', '${chapterNum}', '${escapeAttr(chapterName)}')">Retry</button>
+                <button class="retry-btn" style="margin-left:8px" onclick="loadPracticeSubject('${subjectKey}')">Back to Chapters</button>
+            </div>`;
+    }
+}
+
+function renderQuizQuestion() {
+    const s = practiceState;
+    if (s.currentIndex >= s.questions.length) {
+        renderQuizResults();
+        return;
+    }
+
+    const q = s.questions[s.currentIndex];
+    const content = document.getElementById('practice-content');
+    const subjectName = subjectsData[s.subject]?.name || s.subject;
+    const totalQ = s.questions.length;
+    const progressPct = Math.round((s.currentIndex / totalQ) * 100);
+
+    const diffClass = q.difficulty === 'easy' ? 'diff-easy' : q.difficulty === 'hard' ? 'diff-hard' : 'diff-medium';
+    const diffLabel = q.difficulty ? q.difficulty.charAt(0).toUpperCase() + q.difficulty.slice(1) : 'Medium';
+
+    content.innerHTML = `
+        <div class="quiz-card">
+            <div class="quiz-back-row">
+                <button class="back-btn" onclick="loadPracticeSubject('${s.subject}')">← Back to Chapters</button>
+                <span class="quiz-chapter-label">${subjectName} - Ch ${parseInt(s.chapter)}: ${s.chapterName}</span>
+            </div>
+            <div class="quiz-header">
+                <div class="quiz-progress-bar-wrap">
+                    <div class="quiz-progress-bar" style="width: ${progressPct}%"></div>
+                </div>
+                <div class="quiz-header-info">
+                    <div class="quiz-progress">Question ${s.currentIndex + 1} of ${totalQ}</div>
+                    <div class="quiz-stats">
+                        <span class="quiz-score">Score: ${s.score}/${s.totalAnswered}</span>
+                        <span class="quiz-streak">${s.streak > 0 ? '&#128293; ' : ''}Streak: ${s.streak}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="quiz-difficulty">
+                <span class="diff-badge ${diffClass}">${diffLabel}</span>
+                <span class="concept-tag">${escapeHtml(q.concept || 'General')}</span>
+            </div>
+            <div class="quiz-question">${escapeHtml(q.question)}</div>
+            <div class="quiz-options">
+                ${['A', 'B', 'C', 'D'].map(letter => `
+                    <button class="option-btn" id="opt-${letter}" onclick="selectAnswer('${letter}')">
+                        <span class="option-letter">${letter}</span>
+                        <span class="option-text">${escapeHtml(q.options[letter] || '')}</span>
+                    </button>
+                `).join('')}
+            </div>
+            <div class="quiz-explanation" id="quiz-explanation" style="display:none"></div>
+            <div class="hydra-msg" id="hydra-msg" style="display:none"></div>
+            <button class="quiz-next-btn" id="quiz-next-btn" style="display:none" onclick="nextQuestion()">
+                Next Question →
+            </button>
+        </div>
+    `;
+}
+
+function selectAnswer(selected) {
+    const s = practiceState;
+    if (s.answering || s.completed) return;
+    s.answering = true;
+
+    const q = s.questions[s.currentIndex];
+    const isCorrect = selected === q.correct;
+
+    // Disable all buttons
+    document.querySelectorAll('.option-btn').forEach(btn => {
+        btn.disabled = true;
+        btn.classList.add('disabled');
+    });
+
+    // Highlight correct and wrong
+    const selectedBtn = document.getElementById(`opt-${selected}`);
+    const correctBtn = document.getElementById(`opt-${q.correct}`);
+
+    if (isCorrect) {
+        selectedBtn.classList.add('correct');
+        s.score++;
+        s.streak++;
+        if (s.streak > s.bestStreak) s.bestStreak = s.streak;
+    } else {
+        selectedBtn.classList.add('wrong');
+        correctBtn.classList.add('reveal-correct');
+        s.streak = 0;
+        s.wrongCount++;
+        if (!s.wrongConcepts.includes(q.concept)) {
+            s.wrongConcepts.push(q.concept);
+        }
+        // Show hydra message
+        const hydraMsg = document.getElementById('hydra-msg');
+        hydraMsg.style.display = 'block';
+        hydraMsg.innerHTML = '<span class="hydra-icon">&#128013;</span> Hydra! 2 more questions spawned on this topic!';
+        hydraMsg.classList.add('hydra-animate');
+
+        // Spawn 2 more questions in background
+        spawnHydraQuestions(q.concept);
+    }
+
+    s.totalAnswered++;
+
+    // Show explanation
+    const explEl = document.getElementById('quiz-explanation');
+    explEl.style.display = 'block';
+    explEl.innerHTML = `<strong>${isCorrect ? 'Correct!' : 'Not quite.'}</strong> ${escapeHtml(q.explanation || '')}`;
+    explEl.className = 'quiz-explanation ' + (isCorrect ? 'explanation-correct' : 'explanation-wrong');
+
+    // Show next button
+    document.getElementById('quiz-next-btn').style.display = 'block';
+}
+
+async function spawnHydraQuestions(concept) {
+    const s = practiceState;
+    s.hydraSpawned += 2;
+
+    try {
+        const res = await fetchWithTimeout('/api/practice/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                subject: s.subject,
+                chapter_num: s.chapter,
+                count: 2,
+                difficulty: 'easier',
+                exclude_ids: s.excludeIds,
+                focus_concept: concept
+            })
+        }, 60000);
+
+        if (!res.ok) return; // silently fail — quiz continues with remaining questions
+
+        const data = await res.json();
+        if (data.questions && data.questions.length > 0) {
+            s.questions.push(...data.questions);
+            s.excludeIds.push(...data.questions.map(q => q.id));
+        }
+    } catch (e) {
+        // Silently fail — quiz continues
+    }
+}
+
+function nextQuestion() {
+    practiceState.currentIndex++;
+    practiceState.answering = false;
+    renderQuizQuestion();
+}
+
+function renderQuizResults() {
+    const s = practiceState;
+    s.completed = true;
+    const content = document.getElementById('practice-content');
+    const subjectName = subjectsData[s.subject]?.name || s.subject;
+
+    const pct = s.totalAnswered > 0 ? Math.round((s.score / s.totalAnswered) * 100) : 0;
+    let emoji, message;
+    if (pct >= 90) { emoji = '&#127942;'; message = 'Outstanding! You nailed it!'; }
+    else if (pct >= 70) { emoji = '&#128170;'; message = 'Great job! Keep it up!'; }
+    else if (pct >= 50) { emoji = '&#128218;'; message = 'Good effort! Review the weak topics below.'; }
+    else { emoji = '&#128170;'; message = 'Keep practicing! You will get there!'; }
+
+    const weakTopicsHtml = s.wrongConcepts.length > 0
+        ? `<div class="results-weak">
+               <h4>Topics to review:</h4>
+               <ul>${s.wrongConcepts.map(c => `<li>${escapeHtml(c)}</li>`).join('')}</ul>
+           </div>`
+        : '<div class="results-weak"><p>No weak topics — perfect score!</p></div>';
+
+    content.innerHTML = `
+        <div class="quiz-results">
+            <div class="results-emoji">${emoji}</div>
+            <h3>Practice Complete!</h3>
+            <p class="results-chapter">${subjectName} - Ch ${parseInt(s.chapter)}: ${s.chapterName}</p>
+            <p class="results-message">${message}</p>
+            <div class="results-stats">
+                <div class="result-stat">
+                    <span class="result-stat-num">${s.score}/${s.totalAnswered}</span>
+                    <span class="result-stat-label">Score (${pct}%)</span>
+                </div>
+                <div class="result-stat">
+                    <span class="result-stat-num">&#128293; ${s.bestStreak}</span>
+                    <span class="result-stat-label">Best Streak</span>
+                </div>
+                <div class="result-stat">
+                    <span class="result-stat-num">&#128013; ${s.hydraSpawned}</span>
+                    <span class="result-stat-label">Hydra Spawned</span>
+                </div>
+            </div>
+            ${weakTopicsHtml}
+            <div class="results-actions">
+                <button class="quiz-action-btn primary" onclick="startQuiz('${s.subject}', '${s.chapter}', '${escapeAttr(s.chapterName)}')">Try Again</button>
+                <button class="quiz-action-btn secondary" onclick="loadPracticeSubject('${s.subject}')">Back to Chapters</button>
+            </div>
+        </div>
+    `;
+}
+
+function restartPractice() {
+    const s = practiceState;
+    if (s.subject && s.chapter) {
+        startQuiz(s.subject, s.chapter, s.chapterName);
     }
 }
 

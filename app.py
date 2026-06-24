@@ -9,10 +9,11 @@ import json
 import logging
 import os
 import re
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -961,6 +962,127 @@ async def get_brainteaser(subject: str, chapter_num: str):
         save_brainteaser_cache(subject, chapter_num, html)
         return {"html": html, "cached": False}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+
+
+# ── Interactive Practice (Hydra Mode) ─────────────────────────────────────────
+
+class PracticeGenerateRequest(BaseModel):
+    subject: str
+    chapter_num: str
+    count: int = 5
+    difficulty: str = "mixed"
+    exclude_ids: List[str] = []
+    focus_concept: Optional[str] = None
+
+PRACTICE_MCQ_PROMPT = """You are a CBSE Class 9 question generator. Generate {count} multiple-choice questions for this chapter.
+
+Return ONLY a JSON array (no markdown, no code blocks, no explanation). Each element:
+{{
+  "question": "The question text",
+  "options": {{"A": "option 1", "B": "option 2", "C": "option 3", "D": "option 4"}},
+  "correct": "A",
+  "explanation": "Why this is correct - brief",
+  "concept": "The specific topic/concept tested",
+  "difficulty": "easy|medium|hard"
+}}
+
+{difficulty_instruction}
+{focus_instruction}
+
+RULES:
+- Questions must be exam-relevant for CBSE Class 9
+- Each option should be plausible (no obviously wrong answers)
+- Explanation should teach, not just state the answer
+- Cover different parts of the chapter
+- Output ONLY the JSON array, nothing else
+"""
+
+@app.post("/api/practice/generate")
+async def generate_practice_mcqs(request: PracticeGenerateRequest):
+    """Generate interactive MCQ questions for a chapter."""
+    if not ai_backend:
+        raise HTTPException(status_code=503, detail="AI not configured")
+
+    data = load_subject_data(request.subject)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Subject '{request.subject}' not found")
+
+    chapter = next(
+        (c for c in data.get("chapters", []) if c["chapter_number"] == request.chapter_num),
+        None
+    )
+    if not chapter:
+        raise HTTPException(status_code=404, detail=f"Chapter {request.chapter_num} not found")
+
+    # Build difficulty instruction
+    if request.difficulty == "easier":
+        difficulty_instruction = "Make these questions EASIER than typical — they are follow-up questions for a student who got a similar question wrong."
+    elif request.difficulty == "easy":
+        difficulty_instruction = "Make all questions EASY difficulty."
+    elif request.difficulty == "hard":
+        difficulty_instruction = "Make all questions HARD difficulty."
+    elif request.difficulty == "medium":
+        difficulty_instruction = "Make all questions MEDIUM difficulty."
+    else:
+        difficulty_instruction = "Mix difficulty levels: include easy, medium, and hard questions."
+
+    # Build focus instruction
+    if request.focus_concept:
+        focus_instruction = f"Focus ALL questions on the concept: {request.focus_concept}. Make them progressively easier to help the student understand."
+    else:
+        focus_instruction = ""
+
+    prompt_template = PRACTICE_MCQ_PROMPT.format(
+        count=request.count,
+        difficulty_instruction=difficulty_instruction,
+        focus_instruction=focus_instruction,
+    )
+
+    text = chapter.get("text", "")
+    user_prompt = (
+        f"Subject: {data['subject']}\n"
+        f"Chapter {request.chapter_num}: {chapter['chapter_name']}\n\n"
+        f"--- Chapter Content (first 10000 chars) ---\n{text[:10000]}"
+    )
+
+    try:
+        raw = await call_ai(prompt_template, user_prompt)
+        # Strip code fences if present
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = "\n".join(raw.split("\n")[1:])
+        if raw.endswith("```"):
+            raw = "\n".join(raw.split("\n")[:-1])
+        raw = raw.strip()
+
+        questions = json.loads(raw)
+        if not isinstance(questions, list):
+            raise ValueError("AI did not return a JSON array")
+
+        # Assign UUIDs and validate structure
+        for q in questions:
+            q["id"] = str(uuid.uuid4())
+            # Ensure required fields exist
+            if "question" not in q or "options" not in q or "correct" not in q:
+                continue  # skip malformed
+            if "explanation" not in q:
+                q["explanation"] = ""
+            if "concept" not in q:
+                q["concept"] = "General"
+            if "difficulty" not in q:
+                q["difficulty"] = "medium"
+
+        # Filter out any whose id is in exclude_ids (shouldn't happen with UUIDs, but safety)
+        questions = [q for q in questions if q.get("id") not in request.exclude_ids]
+
+        return {"questions": questions}
+
+    except json.JSONDecodeError as e:
+        ai_logger.error(f"PRACTICE_MCQ_JSON_ERROR | {e} | raw={raw[:500]}")
+        raise HTTPException(status_code=500, detail="AI returned invalid JSON. Please try again.")
+    except Exception as e:
+        ai_logger.error(f"PRACTICE_MCQ_ERROR | {e}")
         raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
 
 
