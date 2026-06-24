@@ -11,11 +11,12 @@ import os
 import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, datetime, timedelta
+from math import floor
 from pathlib import Path
 from typing import Optional, List
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -60,6 +61,8 @@ else:
 DATA_DIR = Path(__file__).parent / "data"
 STATIC_DIR = Path(__file__).parent / "static"
 USAGE_FILE = Path(__file__).parent / "usage.json"
+PROGRESS_FILE = Path(__file__).parent / "progress.json"
+PLANNER_FILE = Path(__file__).parent / "planner.json"
 
 # --- Usage Tracking ---
 DAILY_LIMIT = 50
@@ -1084,6 +1087,797 @@ async def generate_practice_mcqs(request: PracticeGenerateRequest):
     except Exception as e:
         ai_logger.error(f"PRACTICE_MCQ_ERROR | {e}")
         raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+
+
+# ── NCERT Solutions ──────────────────────────────────────────────────────────
+
+NCERT_SOLUTIONS_CACHE_DIR = Path(__file__).parent / "cache" / "ncert-solutions"
+NCERT_SOLUTIONS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+NCERT_SOLUTIONS_PROMPT = """You are an expert NCERT textbook solutions provider for CBSE Class 9.
+Solve all exercise questions from the NCERT textbook for this chapter.
+
+RULES:
+- Show step-by-step working for each question
+- Number each question clearly
+- For Maths/Science: show every calculation step
+- For Social Studies/English: provide concise, exam-ready answers
+- Use clean HTML formatting (no markdown, no code blocks)
+- Use <h4> for exercise/question group headings
+- Use <div class="solution-q"> to wrap each question-answer pair
+- Use <strong> for question text and important terms
+- Keep language simple — a 14-year-old should understand
+- Be thorough but concise
+- Do NOT wrap in code blocks or backticks
+"""
+
+def get_ncert_solutions_cache(subject: str, chapter_num: str) -> Optional[str]:
+    f = NCERT_SOLUTIONS_CACHE_DIR / f"{subject}_{chapter_num}.html"
+    return f.read_text(encoding="utf-8") if f.exists() else None
+
+def save_ncert_solutions_cache(subject: str, chapter_num: str, html: str):
+    f = NCERT_SOLUTIONS_CACHE_DIR / f"{subject}_{chapter_num}.html"
+    f.write_text(html, encoding="utf-8")
+
+
+@app.get("/api/ncert-solutions/{subject}/{chapter_num}")
+async def get_ncert_solutions(subject: str, chapter_num: str):
+    """Return AI-generated NCERT exercise solutions for a chapter. Cached after first generation."""
+    cached = get_ncert_solutions_cache(subject, chapter_num)
+    if cached:
+        return {"html": cached, "cached": True}
+
+    if not ai_backend:
+        raise HTTPException(status_code=503, detail="AI not configured")
+
+    data = load_subject_data(subject)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Subject '{subject}' not found")
+
+    chapter = next((c for c in data.get("chapters", []) if c["chapter_number"] == chapter_num), None)
+    if not chapter:
+        raise HTTPException(status_code=404, detail=f"Chapter {chapter_num} not found")
+
+    text = chapter.get("text", "")
+    user_prompt = (
+        f"Solve all exercise questions from NCERT Class 9 {data['subject']} "
+        f"Chapter {chapter_num}: {chapter['chapter_name']}. "
+        f"Show step-by-step working for each question. Format as clean HTML with question numbers.\n\n"
+        f"--- Chapter Content (first 10000 chars) ---\n{text[:10000]}"
+    )
+
+    try:
+        html = await call_ai(NCERT_SOLUTIONS_PROMPT, user_prompt)
+        html = html.strip()
+        if html.startswith("```"):
+            html = "\n".join(html.split("\n")[1:])
+        if html.endswith("```"):
+            html = "\n".join(html.split("\n")[:-1])
+        save_ncert_solutions_cache(subject, chapter_num, html)
+        return {"html": html, "cached": False}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+
+
+# ── Snap & Solve (Image-based question solver) ──────────────────────────────
+
+SNAP_SOLVE_TEMP_DIR = Path(__file__).parent / "cache" / "snap-temp"
+SNAP_SOLVE_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@app.post("/api/snap-solve")
+async def snap_solve(
+    image: UploadFile = File(...),
+    subject: Optional[str] = Form(None),
+):
+    """Accept an image of a homework/textbook question, read it with Gemini vision, and solve it."""
+    if not ai_backend:
+        raise HTTPException(
+            status_code=500,
+            detail="No AI API key configured. Add GROQ_API_KEY or GEMINI_API_KEY to .env file.",
+        )
+
+    # Check daily limit
+    usage = get_today_usage()
+    if usage["count"] >= DAILY_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily question limit reached ({DAILY_LIMIT} questions). Come back tomorrow!",
+        )
+
+    # Read image bytes
+    image_bytes = await image.read()
+    if len(image_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Empty image file")
+    if len(image_bytes) > 10 * 1024 * 1024:  # 10MB limit
+        raise HTTPException(status_code=400, detail="Image too large (max 10MB)")
+
+    # Determine mime type
+    content_type = image.content_type or "image/jpeg"
+    if content_type not in ("image/jpeg", "image/png", "image/gif", "image/webp"):
+        content_type = "image/jpeg"
+
+    prompt_text = (
+        "This is a photo of a homework/textbook question for CBSE Class 9. "
+        "Read the question from the image and solve it step-by-step. "
+        "Show all working. If it's a math problem, show each calculation step. "
+        "Format your response in markdown."
+    )
+    if subject:
+        index = load_index()
+        subject_name = index.get(subject, {}).get("name", subject)
+        prompt_text = f"Subject: {subject_name}\n\n" + prompt_text
+
+    try:
+        if ai_backend == "gemini":
+            from google.genai import types
+            loop = asyncio.get_event_loop()
+
+            def _snap_solve_sync():
+                import time
+                last_error = None
+                for model_name in GEMINI_MODELS:
+                    for attempt in range(3):
+                        try:
+                            response = gemini_client.models.generate_content(
+                                model=model_name,
+                                contents=[
+                                    types.Content(parts=[
+                                        types.Part.from_text(prompt_text),
+                                        types.Part.from_bytes(data=image_bytes, mime_type=content_type)
+                                    ])
+                                ]
+                            )
+                            return response.text
+                        except Exception as e:
+                            last_error = e
+                            err_str = str(e)
+                            if "503" in err_str or "UNAVAILABLE" in err_str or "overloaded" in err_str.lower():
+                                wait = (attempt + 1) * 2
+                                ai_logger.warning(f"Snap-solve Gemini {model_name} attempt {attempt+1} failed (503), retrying in {wait}s...")
+                                time.sleep(wait)
+                            else:
+                                raise
+                    ai_logger.warning(f"Snap-solve: All retries exhausted for {model_name}, trying next model...")
+                raise Exception(f"All Gemini models unavailable. Last error: {last_error}")
+
+            answer = await asyncio.wait_for(
+                loop.run_in_executor(_ai_executor, _snap_solve_sync),
+                timeout=AI_CALL_TIMEOUT,
+            )
+        elif ai_backend == "groq":
+            # Groq doesn't support vision — use text-only fallback
+            raise HTTPException(
+                status_code=400,
+                detail="Snap & Solve requires Gemini AI backend. Groq does not support image analysis.",
+            )
+        else:
+            raise HTTPException(status_code=503, detail="AI not configured")
+
+        # Increment usage
+        updated_usage = increment_usage()
+
+        return {
+            "answer": answer,
+            "image_text": "Image analyzed by AI",
+            "usage_today": updated_usage["count"],
+            "usage_limit": DAILY_LIMIT,
+            "usage_remaining": max(0, DAILY_LIMIT - updated_usage["count"]),
+        }
+    except HTTPException:
+        raise
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=500, detail=f"AI response timed out after {AI_CALL_TIMEOUT} seconds. Please try again.")
+    except Exception as e:
+        ai_logger.error(f"SNAP_SOLVE_ERROR | {e}")
+        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+
+
+# ── Progress & Gamification ──────────────────────────────────────────────────
+
+LEVEL_NAMES = {
+    1: "Beginner", 2: "Learner", 3: "Explorer", 4: "Achiever", 5: "Scholar",
+    6: "Expert", 7: "Master", 8: "Champion", 9: "Legend", 10: "Genius",
+}
+
+BADGE_DEFINITIONS = [
+    {"id": "first_steps", "name": "First Steps", "desc": "Complete first practice", "icon": "🎯"},
+    {"id": "hat_trick", "name": "Hat Trick", "desc": "3 correct in a row", "icon": "🎩"},
+    {"id": "on_fire", "name": "On Fire", "desc": "10 correct streak", "icon": "🔥"},
+    {"id": "subject_star", "name": "Subject Star", "desc": "90%+ accuracy in any subject", "icon": "⭐"},
+    {"id": "brain_bender", "name": "Brain Bender", "desc": "Complete 5 brain teasers", "icon": "🧠"},
+    {"id": "mock_master", "name": "Mock Master", "desc": "Score 80%+ on a mock test", "icon": "🏅"},
+    {"id": "daily_grind", "name": "Daily Grind", "desc": "Practice 3 days in a row", "icon": "📆"},
+    {"id": "centurion", "name": "Centurion", "desc": "Answer 100 questions total", "icon": "💯"},
+    {"id": "perfectionist", "name": "Perfectionist", "desc": "100% on any quiz", "icon": "✨"},
+    {"id": "hydra_slayer", "name": "Hydra Slayer", "desc": "Defeat all hydra spawns in a practice", "icon": "🐍"},
+]
+
+
+def load_progress() -> dict:
+    if PROGRESS_FILE.exists():
+        try:
+            with open(PROGRESS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {"records": [], "badges": [], "xp": 0, "brain_teasers_done": 0}
+
+
+def save_progress(data: dict):
+    with open(PROGRESS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def calculate_xp_for_record(score: int, total: int, streak: int, is_mock: bool) -> int:
+    xp = score * 10
+    if streak >= 3:
+        xp += (streak - 2) * 5
+    xp += 50  # quiz completion bonus
+    if is_mock:
+        xp += 50  # extra mock test bonus (total 100)
+    return xp
+
+
+def check_badges(progress: dict) -> list:
+    earned = set(progress.get("badges", []))
+    new_badges = []
+    records = progress.get("records", [])
+
+    # First Steps
+    if "first_steps" not in earned and len(records) > 0:
+        new_badges.append("first_steps")
+
+    # Hat Trick
+    if "hat_trick" not in earned:
+        for r in records:
+            if r.get("best_streak", 0) >= 3:
+                new_badges.append("hat_trick")
+                break
+
+    # On Fire
+    if "on_fire" not in earned:
+        for r in records:
+            if r.get("best_streak", 0) >= 10:
+                new_badges.append("on_fire")
+                break
+
+    # Subject Star — 90%+ in any subject (min 10 questions)
+    if "subject_star" not in earned:
+        subject_stats = {}
+        for r in records:
+            subj = r.get("subject", "")
+            if subj not in subject_stats:
+                subject_stats[subj] = {"answered": 0, "correct": 0}
+            subject_stats[subj]["answered"] += r.get("total", 0)
+            subject_stats[subj]["correct"] += r.get("score", 0)
+        for st in subject_stats.values():
+            if st["answered"] >= 10 and (st["correct"] / st["answered"]) >= 0.9:
+                new_badges.append("subject_star")
+                break
+
+    # Brain Bender
+    if "brain_bender" not in earned and progress.get("brain_teasers_done", 0) >= 5:
+        new_badges.append("brain_bender")
+
+    # Mock Master
+    if "mock_master" not in earned:
+        for r in records:
+            if r.get("is_mock") and r.get("total", 0) > 0:
+                if (r["score"] / r["total"]) >= 0.8:
+                    new_badges.append("mock_master")
+                    break
+
+    # Daily Grind — 3 consecutive days
+    if "daily_grind" not in earned:
+        dates = sorted(set(r.get("date", "") for r in records))
+        streak_count = 1
+        for i in range(1, len(dates)):
+            try:
+                d1 = datetime.strptime(dates[i - 1], "%Y-%m-%d").date()
+                d2 = datetime.strptime(dates[i], "%Y-%m-%d").date()
+                if (d2 - d1).days == 1:
+                    streak_count += 1
+                    if streak_count >= 3:
+                        new_badges.append("daily_grind")
+                        break
+                else:
+                    streak_count = 1
+            except ValueError:
+                streak_count = 1
+
+    # Centurion
+    total_answered = sum(r.get("total", 0) for r in records)
+    if "centurion" not in earned and total_answered >= 100:
+        new_badges.append("centurion")
+
+    # Perfectionist
+    if "perfectionist" not in earned:
+        for r in records:
+            if r.get("total", 0) >= 3 and r.get("score", 0) == r.get("total", 0):
+                new_badges.append("perfectionist")
+                break
+
+    # Hydra Slayer
+    if "hydra_slayer" not in earned:
+        for r in records:
+            if r.get("hydra_spawned", 0) > 0 and r.get("hydra_defeated", False):
+                new_badges.append("hydra_slayer")
+                break
+
+    return new_badges
+
+
+class ProgressRecordRequest(BaseModel):
+    subject: str
+    chapter_num: str = ""
+    score: int
+    total: int
+    wrong_concepts: List[str] = []
+    best_streak: int = 0
+    hydra_spawned: int = 0
+    hydra_defeated: bool = False
+    is_mock: bool = False
+
+
+@app.post("/api/progress/record")
+async def record_progress(request: ProgressRecordRequest):
+    progress = load_progress()
+    today = str(date.today())
+
+    xp_gained = calculate_xp_for_record(
+        request.score, request.total, request.best_streak, request.is_mock
+    )
+    progress["xp"] = progress.get("xp", 0) + xp_gained
+
+    record = {
+        "date": today,
+        "subject": request.subject,
+        "chapter_num": request.chapter_num,
+        "score": request.score,
+        "total": request.total,
+        "wrong_concepts": request.wrong_concepts,
+        "best_streak": request.best_streak,
+        "hydra_spawned": request.hydra_spawned,
+        "hydra_defeated": request.hydra_defeated,
+        "is_mock": request.is_mock,
+        "xp_gained": xp_gained,
+    }
+    progress.setdefault("records", []).append(record)
+
+    # Check for new badges
+    new_badges = check_badges(progress)
+    for b in new_badges:
+        if b not in progress.get("badges", []):
+            progress.setdefault("badges", []).append(b)
+
+    save_progress(progress)
+
+    level = floor(progress["xp"] / 200) + 1
+    level_name = LEVEL_NAMES.get(min(level, 10), "Genius")
+
+    return {
+        "xp_gained": xp_gained,
+        "total_xp": progress["xp"],
+        "level": level,
+        "level_name": level_name,
+        "new_badges": new_badges,
+    }
+
+
+@app.post("/api/progress/check-badges")
+async def check_badges_endpoint():
+    progress = load_progress()
+    new_badges = check_badges(progress)
+    for b in new_badges:
+        if b not in progress.get("badges", []):
+            progress.setdefault("badges", []).append(b)
+    save_progress(progress)
+    return {"new_badges": new_badges}
+
+
+@app.get("/api/progress/summary")
+async def get_progress_summary():
+    progress = load_progress()
+    records = progress.get("records", [])
+
+    total_answered = sum(r.get("total", 0) for r in records)
+    total_correct = sum(r.get("score", 0) for r in records)
+    accuracy_pct = round((total_correct / total_answered) * 100) if total_answered > 0 else 0
+
+    # Subject-wise breakdown
+    subjects = {}
+    for r in records:
+        subj = r.get("subject", "unknown")
+        if subj not in subjects:
+            subjects[subj] = {"answered": 0, "correct": 0, "chapters_practiced": []}
+        subjects[subj]["answered"] += r.get("total", 0)
+        subjects[subj]["correct"] += r.get("score", 0)
+        ch = r.get("chapter_num", "")
+        if ch and ch not in subjects[subj]["chapters_practiced"]:
+            subjects[subj]["chapters_practiced"].append(ch)
+
+    for subj in subjects.values():
+        subj["accuracy"] = round((subj["correct"] / subj["answered"]) * 100) if subj["answered"] > 0 else 0
+
+    # Weak concepts
+    concept_counts = {}
+    for r in records:
+        for c in r.get("wrong_concepts", []):
+            concept_counts[c] = concept_counts.get(c, 0) + 1
+    weak_concepts = sorted(concept_counts.keys(), key=lambda c: concept_counts[c], reverse=True)[:10]
+
+    # Daily log (last 7 days)
+    daily = {}
+    for r in records:
+        d = r.get("date", "")
+        if d not in daily:
+            daily[d] = {"date": d, "questions": 0, "correct": 0}
+        daily[d]["questions"] += r.get("total", 0)
+        daily[d]["correct"] += r.get("score", 0)
+    daily_log = sorted(daily.values(), key=lambda x: x["date"], reverse=True)[:7]
+
+    # Streaks
+    practice_dates = sorted(set(r.get("date", "") for r in records if r.get("date")))
+    current_streak = 0
+    best_streak = 0
+    if practice_dates:
+        today_str = str(date.today())
+        yesterday_str = str(date.today() - timedelta(days=1))
+        if practice_dates[-1] in (today_str, yesterday_str):
+            current_streak = 1
+            for i in range(len(practice_dates) - 2, -1, -1):
+                try:
+                    d1 = datetime.strptime(practice_dates[i], "%Y-%m-%d").date()
+                    d2 = datetime.strptime(practice_dates[i + 1], "%Y-%m-%d").date()
+                    if (d2 - d1).days == 1:
+                        current_streak += 1
+                    else:
+                        break
+                except ValueError:
+                    break
+        s = 1
+        for i in range(1, len(practice_dates)):
+            try:
+                d1 = datetime.strptime(practice_dates[i - 1], "%Y-%m-%d").date()
+                d2 = datetime.strptime(practice_dates[i], "%Y-%m-%d").date()
+                if (d2 - d1).days == 1:
+                    s += 1
+                    best_streak = max(best_streak, s)
+                else:
+                    s = 1
+            except ValueError:
+                s = 1
+        best_streak = max(best_streak, current_streak)
+
+    xp = progress.get("xp", 0)
+    level = floor(xp / 200) + 1
+    level_name = LEVEL_NAMES.get(min(level, 10), "Genius")
+
+    index = load_index()
+
+    return {
+        "total_questions_answered": total_answered,
+        "total_correct": total_correct,
+        "accuracy_percent": accuracy_pct,
+        "subjects": subjects,
+        "weak_concepts": weak_concepts,
+        "daily_log": daily_log,
+        "streaks": {"current": current_streak, "best": best_streak},
+        "xp": xp,
+        "level": level,
+        "level_name": level_name,
+        "badges": progress.get("badges", []),
+        "badge_definitions": BADGE_DEFINITIONS,
+        "all_subjects": {
+            k: {
+                "name": v.get("name", k),
+                "emoji": v.get("emoji", ""),
+                "chapters": [c["number"] for c in v.get("chapters", [])]
+            }
+            for k, v in index.items() if v.get("total_chapters", 0) > 0
+        },
+    }
+
+
+@app.get("/api/progress/reset")
+async def reset_progress():
+    save_progress({"records": [], "badges": [], "xp": 0, "brain_teasers_done": 0})
+    return {"status": "ok", "message": "All progress has been reset."}
+
+
+# ── Mock Test ────────────────────────────────────────────────────────────────
+
+class MockTestGenerateRequest(BaseModel):
+    subjects: List[str]
+    question_count: int = 30
+    time_minutes: int = 45
+
+
+class MockTestSubmitRequest(BaseModel):
+    questions: list
+    answers: dict
+    time_taken_seconds: int = 0
+
+
+MOCKTEST_MCQ_PROMPT = """You are a CBSE Class 9 exam paper setter. Generate {count} multiple-choice questions spread across the given chapters.
+
+Return ONLY a JSON array (no markdown, no code blocks). Each element:
+{{
+  "question": "The question text",
+  "options": {{"A": "option 1", "B": "option 2", "C": "option 3", "D": "option 4"}},
+  "correct": "A",
+  "explanation": "Brief explanation",
+  "concept": "Topic tested",
+  "difficulty": "easy|medium|hard",
+  "subject": "subject key",
+  "chapter_num": "chapter number"
+}}
+
+Mix difficulty: 30% easy, 50% medium, 20% hard.
+Cover different chapters proportionally.
+Output ONLY the JSON array.
+"""
+
+
+@app.post("/api/mocktest/generate")
+async def generate_mock_test(request: MockTestGenerateRequest):
+    if not ai_backend:
+        raise HTTPException(status_code=503, detail="AI not configured")
+
+    context_parts = []
+    for subj_key in request.subjects:
+        data = load_subject_data(subj_key)
+        if not data:
+            continue
+        subj_name = data.get("subject", subj_key)
+        for ch in data.get("chapters", []):
+            text = ch.get("text", "")
+            context_parts.append(
+                f"[{subj_key}] {subj_name} - Chapter {ch['chapter_number']}: {ch['chapter_name']}\n{text[:2000]}"
+            )
+
+    if not context_parts:
+        raise HTTPException(status_code=400, detail="No valid subjects selected")
+
+    combined_context = "\n\n---\n\n".join(context_parts)
+    if len(combined_context) > 30000:
+        combined_context = combined_context[:30000]
+
+    prompt_template = MOCKTEST_MCQ_PROMPT.format(count=request.question_count)
+    user_prompt = f"Generate questions from these subjects and chapters:\n\n{combined_context}"
+
+    try:
+        raw = await call_ai(prompt_template, user_prompt)
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = "\n".join(raw.split("\n")[1:])
+        if raw.endswith("```"):
+            raw = "\n".join(raw.split("\n")[:-1])
+        raw = raw.strip()
+
+        questions = json.loads(raw)
+        if not isinstance(questions, list):
+            raise ValueError("AI did not return a JSON array")
+
+        for i, q in enumerate(questions):
+            q["id"] = str(uuid.uuid4())
+            q["index"] = i
+            if "explanation" not in q:
+                q["explanation"] = ""
+            if "concept" not in q:
+                q["concept"] = "General"
+            if "difficulty" not in q:
+                q["difficulty"] = "medium"
+            if "subject" not in q:
+                q["subject"] = request.subjects[0] if request.subjects else ""
+            if "chapter_num" not in q:
+                q["chapter_num"] = ""
+
+        return {
+            "questions": questions,
+            "time_minutes": request.time_minutes,
+            "subject_count": len(request.subjects),
+        }
+    except json.JSONDecodeError as e:
+        ai_logger.error(f"MOCKTEST_JSON_ERROR | {e}")
+        raise HTTPException(status_code=500, detail="AI returned invalid JSON. Please try again.")
+    except Exception as e:
+        ai_logger.error(f"MOCKTEST_ERROR | {e}")
+        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+
+
+@app.post("/api/mocktest/submit")
+async def submit_mock_test(request: MockTestSubmitRequest):
+    questions = request.questions
+    answers = request.answers
+    total = len(questions)
+    correct = 0
+    results = []
+    subject_breakdown = {}
+
+    for i, q in enumerate(questions):
+        idx_str = str(i)
+        user_ans = answers.get(idx_str, "")
+        is_correct = user_ans == q.get("correct", "")
+        if is_correct:
+            correct += 1
+
+        subj = q.get("subject", "unknown")
+        if subj not in subject_breakdown:
+            subject_breakdown[subj] = {"total": 0, "correct": 0}
+        subject_breakdown[subj]["total"] += 1
+        if is_correct:
+            subject_breakdown[subj]["correct"] += 1
+
+        results.append({
+            "question": q.get("question", ""),
+            "options": q.get("options", {}),
+            "correct_answer": q.get("correct", ""),
+            "user_answer": user_ans,
+            "is_correct": is_correct,
+            "explanation": q.get("explanation", ""),
+            "concept": q.get("concept", ""),
+            "subject": subj,
+        })
+
+    for subj in subject_breakdown.values():
+        subj["accuracy"] = round((subj["correct"] / subj["total"]) * 100) if subj["total"] > 0 else 0
+
+    pct = round((correct / total) * 100) if total > 0 else 0
+
+    return {
+        "total": total,
+        "correct": correct,
+        "percentage": pct,
+        "subject_breakdown": subject_breakdown,
+        "results": results,
+    }
+
+
+# ── Study Planner ────────────────────────────────────────────────────────────
+
+PLANNER_PROMPT = """You are a CBSE Class 9 study planner AI. Create a day-by-day study plan.
+
+Given the exam date, subjects, chapters, daily study hours, and the student's weak areas,
+create an optimal study plan.
+
+Return ONLY a JSON object (no markdown, no code blocks):
+{{
+  "plan_name": "Exam Prep Plan",
+  "total_days": N,
+  "tasks": [
+    {{
+      "date": "2026-06-25",
+      "day_number": 1,
+      "tasks": [
+        {{
+          "subject": "maths",
+          "chapter_num": "01",
+          "chapter_name": "Chapter Name",
+          "activity": "Study & revise",
+          "duration_minutes": 30,
+          "priority": "high|medium|low"
+        }}
+      ]
+    }}
+  ]
+}}
+
+RULES:
+- Spread subjects across days (don't do all maths in one day)
+- Put weak topics earlier and repeat them
+- Include revision days before the exam
+- Keep each day's total within the daily_hours limit
+- Mix easy and hard topics within a day
+- Output ONLY the JSON object
+"""
+
+
+def load_planner() -> dict:
+    if PLANNER_FILE.exists():
+        try:
+            with open(PLANNER_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {}
+
+
+def save_planner(data: dict):
+    with open(PLANNER_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+class PlannerGenerateRequest(BaseModel):
+    exam_date: str
+    subjects: List[str]
+    daily_hours: int = 2
+
+
+class PlannerCompleteRequest(BaseModel):
+    date: str
+    task_index: int
+
+
+@app.post("/api/planner/generate")
+async def generate_study_plan(request: PlannerGenerateRequest):
+    if not ai_backend:
+        raise HTTPException(status_code=503, detail="AI not configured")
+
+    index = load_index()
+    chapters_info = []
+    for subj in request.subjects:
+        subj_data = index.get(subj, {})
+        for ch in subj_data.get("chapters", []):
+            chapters_info.append(f"{subj}: Chapter {ch['number']} - {ch['name']}")
+
+    progress = load_progress()
+    concept_counts = {}
+    for r in progress.get("records", []):
+        for c in r.get("wrong_concepts", []):
+            concept_counts[c] = concept_counts.get(c, 0) + 1
+    weak_concepts = sorted(concept_counts.keys(), key=lambda c: concept_counts[c], reverse=True)[:10]
+
+    today_str = str(date.today())
+    user_prompt = (
+        f"Today's date: {today_str}\n"
+        f"Exam date: {request.exam_date}\n"
+        f"Daily study hours: {request.daily_hours}\n\n"
+        f"Chapters to cover:\n" + "\n".join(chapters_info) + "\n\n"
+        f"Weak areas (need extra focus): {', '.join(weak_concepts) if weak_concepts else 'None identified yet'}\n"
+    )
+
+    try:
+        raw = await call_ai(PLANNER_PROMPT, user_prompt)
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = "\n".join(raw.split("\n")[1:])
+        if raw.endswith("```"):
+            raw = "\n".join(raw.split("\n")[:-1])
+        raw = raw.strip()
+
+        plan = json.loads(raw)
+        plan["completed_tasks"] = []
+        plan["created_at"] = today_str
+        plan["exam_date"] = request.exam_date
+        plan["subjects"] = request.subjects
+        plan["daily_hours"] = request.daily_hours
+
+        save_planner(plan)
+        return plan
+    except json.JSONDecodeError as e:
+        ai_logger.error(f"PLANNER_JSON_ERROR | {e}")
+        raise HTTPException(status_code=500, detail="AI returned invalid plan format. Please try again.")
+    except Exception as e:
+        ai_logger.error(f"PLANNER_ERROR | {e}")
+        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+
+
+@app.get("/api/planner/current")
+async def get_current_plan():
+    plan = load_planner()
+    if not plan:
+        return {"has_plan": False}
+    plan["has_plan"] = True
+    return plan
+
+
+@app.post("/api/planner/complete")
+async def complete_planner_task(request: PlannerCompleteRequest):
+    plan = load_planner()
+    if not plan:
+        raise HTTPException(status_code=404, detail="No plan found")
+
+    completed = plan.setdefault("completed_tasks", [])
+    task_key = f"{request.date}_{request.task_index}"
+    if task_key not in completed:
+        completed.append(task_key)
+    else:
+        completed.remove(task_key)
+
+    save_planner(plan)
+    return {"status": "ok", "completed_tasks": completed}
 
 
 # Serve static files

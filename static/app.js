@@ -90,6 +90,7 @@ function hideWakeUpBanner() {
 document.addEventListener('DOMContentLoaded', () => {
     loadSubjects();
     loadUsage();
+    loadXpHeader();
     document.getElementById('subject-select').addEventListener('change', onSubjectSelectChange);
     document.getElementById('question-input').addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -98,10 +99,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Mock test sliders
+    const qSlider = document.getElementById('mt-question-count');
+    const tSlider = document.getElementById('mt-time');
+    if (qSlider) qSlider.addEventListener('input', () => { document.getElementById('mt-question-label').textContent = qSlider.value; });
+    if (tSlider) tSlider.addEventListener('input', () => { document.getElementById('mt-time-label').textContent = tSlider.value + ' min'; });
+
     // Keep-alive: ping server every 5 minutes to prevent cold starts
     setInterval(() => {
         fetch('/api/health').catch(() => {});
     }, 5 * 60 * 1000);
+
+    // Init Snap & Solve file input listener
+    initSnapSolve();
 });
 
 // === View Navigation ===
@@ -113,6 +123,9 @@ function showView(view) {
     if (navBtn) navBtn.classList.add('active');
     if (view === 'reckoner') initReckoner();
     if (view === 'practice') initPractice();
+    if (view === 'mocktest') initMockTestSetup();
+    if (view === 'planner') initPlanner();
+    if (view === 'progress') loadProgressDashboard();
 }
 
 // === Usage Tracking ===
@@ -261,12 +274,20 @@ async function showChapterDetail(subjectKey, chapterNum) {
             <div class="chapter-hero">
                 <h2>Chapter ${parseInt(data.chapter_number)}: ${data.chapter_name}</h2>
                 <div class="meta">${data.subject} • ${data.word_count.toLocaleString()} words</div>
+                <button class="read-aloud-btn" onclick="readAloud(this)" style="margin-top:10px">🔊 Read Aloud</button>
             </div>
-            <div class="chapter-body">${bodyHtml}</div>
+            <div class="chapter-body readable-content">${bodyHtml}</div>
             <div class="chapter-actions">
                 <button class="ask-about-btn" onclick="askAboutChapter('${subjectKey}', '${chapterNum}', '${escapeAttr(data.chapter_name)}')">
                     Ask a doubt about this chapter
                 </button>
+                <button class="ncert-solutions-btn" onclick="loadNcertSolutions('${subjectKey}', '${chapterNum}', '${escapeAttr(data.chapter_name)}')">
+                    📖 NCERT Solutions
+                </button>
+            </div>
+            <div class="ncert-solutions-section" id="ncert-solutions-section" style="display:none">
+                <h3>📖 NCERT Exercise Solutions</h3>
+                <div id="ncert-solutions-content" class="ncert-solutions-content readable-content"></div>
             </div>
         `;
     } catch (err) {
@@ -379,7 +400,8 @@ async function askDoubt(retryParams) {
             lb.removeAttribute('id');
             lb.innerHTML = `
                 <div class="a-label">Study Coach</div>
-                <div class="answer-text">${renderMarkdown(data.answer)}</div>
+                <div class="answer-text readable-content">${renderMarkdown(data.answer)}</div>
+                <button class="read-aloud-btn" onclick="readAloud(this)" style="margin-top:8px">🔊 Read Aloud</button>
             `;
         }
         if (data.usage_today !== undefined) {
@@ -487,7 +509,7 @@ async function toggleReckoner(subjectKey, chapterNum, chapterName) {
             throw new Error(err.detail || 'Failed to load reckoner');
         }
         const data = await res.json();
-        body.innerHTML = data.html;
+        body.innerHTML = '<div class="readable-content">' + data.html + '</div><button class="read-aloud-btn" onclick="readAloud(this)" style="margin:8px 0">🔊 Read Aloud</button>';
         body.dataset.loaded = 'true';
         if (data.cached) {
             toggle.textContent = '▼ Hide (cached ⚡)';
@@ -905,6 +927,7 @@ function renderQuizResults() {
             <h3>Practice Complete!</h3>
             <p class="results-chapter">${subjectName} - Ch ${parseInt(s.chapter)}: ${s.chapterName}</p>
             <p class="results-message">${message}</p>
+            <div id="xp-result-msg" class="xp-result-msg"></div>
             <div class="results-stats">
                 <div class="result-stat">
                     <span class="result-stat-num">${s.score}/${s.totalAnswered}</span>
@@ -926,6 +949,9 @@ function renderQuizResults() {
             </div>
         </div>
     `;
+
+    // Record progress
+    recordPracticeProgress(s);
 }
 
 function restartPractice() {
@@ -966,4 +992,860 @@ function renderMarkdown(text) {
     html = html.replace(/<p>(<ul>)/g, '$1');
     html = html.replace(/(<\/ul>)<\/p>/g, '$1');
     return html;
+}
+
+
+// === Progress Recording & Gamification ===
+
+async function recordPracticeProgress(s) {
+    try {
+        const res = await fetchWithTimeout('/api/progress/record', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                subject: s.subject,
+                chapter_num: s.chapter,
+                score: s.score,
+                total: s.totalAnswered,
+                wrong_concepts: s.wrongConcepts,
+                best_streak: s.bestStreak,
+                hydra_spawned: s.hydraSpawned,
+                hydra_defeated: s.hydraSpawned > 0 && s.wrongCount === 0,
+                is_mock: false,
+            })
+        }, 15000);
+        const data = await res.json();
+        // Show XP gained
+        const xpEl = document.getElementById('xp-result-msg');
+        if (xpEl && data.xp_gained) {
+            xpEl.innerHTML = `<span class="xp-gained-badge">+${data.xp_gained} XP</span> Level ${data.level}: ${data.level_name}`;
+            xpEl.style.display = 'block';
+        }
+        updateXpHeader(data.total_xp, data.level, data.level_name);
+        // Show badge toasts
+        if (data.new_badges && data.new_badges.length > 0) {
+            showBadgeToasts(data.new_badges);
+        }
+    } catch (e) {
+        // Non-critical, fail silently
+    }
+}
+
+function updateXpHeader(xp, level, levelName) {
+    const bar = document.getElementById('xp-bar-header');
+    if (!bar) return;
+    bar.style.display = 'flex';
+    document.getElementById('xp-level-label').textContent = `L${level} ${levelName}`;
+    document.getElementById('xp-value-label').textContent = `${xp} XP`;
+    const progressInLevel = xp % 200;
+    const pct = Math.min(100, Math.round((progressInLevel / 200) * 100));
+    document.getElementById('xp-bar-fill').style.width = pct + '%';
+}
+
+async function loadXpHeader() {
+    try {
+        const res = await fetchWithTimeout('/api/progress/summary', {}, 10000);
+        const data = await res.json();
+        if (data.xp !== undefined) {
+            updateXpHeader(data.xp, data.level, data.level_name);
+        }
+    } catch (e) { /* non-critical */ }
+}
+
+const BADGE_DEFS = {
+    first_steps: { name: "First Steps", icon: "🎯" },
+    hat_trick: { name: "Hat Trick", icon: "🎩" },
+    on_fire: { name: "On Fire", icon: "🔥" },
+    subject_star: { name: "Subject Star", icon: "⭐" },
+    brain_bender: { name: "Brain Bender", icon: "🧠" },
+    mock_master: { name: "Mock Master", icon: "🏅" },
+    daily_grind: { name: "Daily Grind", icon: "📆" },
+    centurion: { name: "Centurion", icon: "💯" },
+    perfectionist: { name: "Perfectionist", icon: "✨" },
+    hydra_slayer: { name: "Hydra Slayer", icon: "🐍" },
+};
+
+function showBadgeToasts(badgeIds) {
+    const container = document.getElementById('badge-toast-container');
+    if (!container) return;
+    badgeIds.forEach((id, idx) => {
+        const def = BADGE_DEFS[id] || { name: id, icon: "🏆" };
+        const toast = document.createElement('div');
+        toast.className = 'badge-toast';
+        toast.innerHTML = `<span class="badge-toast-icon">${def.icon}</span> Badge Earned: <strong>${def.name}</strong>!`;
+        container.appendChild(toast);
+        setTimeout(() => { toast.classList.add('show'); }, idx * 600);
+        setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 400); }, 4000 + idx * 600);
+    });
+}
+
+
+// === Progress Dashboard ===
+
+async function loadProgressDashboard() {
+    const content = document.getElementById('progress-content');
+    content.innerHTML = '<div class="loading">Loading progress...</div>';
+    try {
+        const res = await fetchWithTimeout('/api/progress/summary', {}, 15000);
+        const data = await res.json();
+        renderProgressDashboard(data);
+    } catch (err) {
+        content.innerHTML = '<div class="error-msg">Could not load progress. <button class="retry-btn" onclick="loadProgressDashboard()">Retry</button></div>';
+    }
+}
+
+function renderProgressDashboard(data) {
+    const content = document.getElementById('progress-content');
+    const earned = new Set(data.badges || []);
+    const badgeDefs = data.badge_definitions || [];
+
+    // Stat cards
+    const statsHtml = `
+        <div class="progress-stats-grid">
+            <div class="progress-stat-card">
+                <div class="psc-num">${data.total_questions_answered}</div>
+                <div class="psc-label">Questions Answered</div>
+            </div>
+            <div class="progress-stat-card">
+                <div class="psc-num">${data.accuracy_percent}%</div>
+                <div class="psc-label">Accuracy</div>
+            </div>
+            <div class="progress-stat-card">
+                <div class="psc-num">🔥 ${data.streaks.current}</div>
+                <div class="psc-label">Current Streak</div>
+            </div>
+            <div class="progress-stat-card">
+                <div class="psc-num">L${data.level}</div>
+                <div class="psc-label">${data.level_name} (${data.xp} XP)</div>
+            </div>
+        </div>
+    `;
+
+    // Subject progress bars
+    let subjectBarsHtml = '';
+    const allSubjects = data.all_subjects || {};
+    for (const [key, info] of Object.entries(allSubjects)) {
+        const subj = data.subjects[key];
+        const accuracy = subj ? subj.accuracy : 0;
+        const answered = subj ? subj.answered : 0;
+        const practicedChapters = subj ? subj.chapters_practiced.length : 0;
+        const totalChapters = info.chapters ? info.chapters.length : 0;
+        const colorClass = accuracy >= 80 ? 'pg-green' : accuracy >= 60 ? 'pg-amber' : 'pg-red';
+        const barWidth = answered > 0 ? accuracy : 0;
+        subjectBarsHtml += `
+            <div class="subject-progress-row">
+                <div class="spr-label">${info.emoji} ${info.name}</div>
+                <div class="spr-bar-wrap">
+                    <div class="spr-bar ${colorClass}" style="width:${barWidth}%"></div>
+                </div>
+                <div class="spr-stats">${accuracy}% (${answered}q, ${practicedChapters}/${totalChapters} ch)</div>
+            </div>
+        `;
+    }
+
+    // Unpracticed chapters
+    let unpracticedHtml = '';
+    for (const [key, info] of Object.entries(allSubjects)) {
+        const practiced = data.subjects[key]?.chapters_practiced || [];
+        const unpracticed = (info.chapters || []).filter(ch => !practiced.includes(ch));
+        if (unpracticed.length > 0 && unpracticed.length < (info.chapters || []).length) {
+            const subjInfo = subjectsData[key] || {};
+            unpracticedHtml += `<span class="unpracticed-tag">${info.emoji} ${info.name}: Ch ${unpracticed.map(c => parseInt(c)).join(', ')}</span> `;
+        }
+    }
+
+    // Weak concepts
+    const weakHtml = data.weak_concepts.length > 0
+        ? data.weak_concepts.map(c => `<span class="weak-concept-tag">${escapeHtml(c)}</span>`).join(' ')
+        : '<span class="text-light">No weak areas yet!</span>';
+
+    // Daily activity log
+    let dailyHtml = '';
+    if (data.daily_log.length > 0) {
+        dailyHtml = data.daily_log.map(d => `
+            <div class="daily-log-row">
+                <span class="dl-date">${d.date}</span>
+                <span class="dl-questions">${d.questions} questions</span>
+                <span class="dl-correct">${d.correct} correct</span>
+            </div>
+        `).join('');
+    } else {
+        dailyHtml = '<div class="text-light" style="padding:12px">No activity yet. Start practicing!</div>';
+    }
+
+    // Badge gallery
+    const badgesHtml = badgeDefs.map(b => {
+        const isEarned = earned.has(b.id);
+        return `<div class="badge-card ${isEarned ? 'earned' : 'locked'}">
+            <div class="badge-icon">${isEarned ? b.icon : '?'}</div>
+            <div class="badge-name">${b.name}</div>
+            <div class="badge-desc">${b.desc}</div>
+        </div>`;
+    }).join('');
+
+    content.innerHTML = `
+        ${statsHtml}
+        <div class="progress-section">
+            <h3>Subject Progress</h3>
+            ${subjectBarsHtml}
+        </div>
+        ${unpracticedHtml ? `<div class="progress-section"><h3>Chapters Not Yet Practiced</h3><div class="unpracticed-list">${unpracticedHtml}</div></div>` : ''}
+        <div class="progress-section">
+            <h3>Weak Concepts</h3>
+            <div class="weak-concepts-list">${weakHtml}</div>
+        </div>
+        <div class="progress-section">
+            <h3>Recent Activity (Last 7 Days)</h3>
+            <div class="daily-log">${dailyHtml}</div>
+        </div>
+        <div class="progress-section">
+            <h3>🏆 Badge Gallery</h3>
+            <div class="badge-gallery">${badgesHtml}</div>
+        </div>
+        <div class="progress-section" style="text-align:center">
+            <button class="retry-btn" style="background:#e74c3c" onclick="if(confirm('Reset all progress? This cannot be undone.')){resetProgress()}">Reset All Progress</button>
+        </div>
+    `;
+}
+
+async function resetProgress() {
+    try {
+        await fetchWithTimeout('/api/progress/reset', {}, 10000);
+        loadProgressDashboard();
+        loadXpHeader();
+    } catch (e) { alert('Failed to reset.'); }
+}
+
+
+// === Mock Test ===
+
+let mockTestState = {
+    questions: [],
+    answers: {},
+    flagged: new Set(),
+    currentIndex: 0,
+    timeRemaining: 0,
+    timerInterval: null,
+    timeMinutes: 30,
+    started: false,
+};
+
+function initMockTestSetup() {
+    const checksEl = document.getElementById('mt-subject-checkboxes');
+    if (!checksEl || checksEl.children.length > 0) return;
+    const subjects = Object.entries(subjectsData);
+    checksEl.innerHTML = subjects
+        .filter(([, s]) => s.total_chapters > 0)
+        .map(([key, s]) => `
+            <label class="mt-subject-check">
+                <input type="checkbox" value="${key}" checked> ${s.emoji} ${s.name}
+            </label>
+        `).join('');
+}
+
+async function startMockTest() {
+    const checks = document.querySelectorAll('#mt-subject-checkboxes input:checked');
+    const subjects = Array.from(checks).map(c => c.value);
+    if (subjects.length === 0) { alert('Select at least one subject!'); return; }
+
+    const questionCount = parseInt(document.getElementById('mt-question-count').value);
+    const timeMinutes = parseInt(document.getElementById('mt-time').value);
+
+    const content = document.getElementById('mocktest-content');
+    content.innerHTML = `
+        <div class="quiz-loading-screen">
+            <div class="quiz-loading-icon"><span class="rr-spinner quiz-spinner"></span></div>
+            <h3>Generating mock test...</h3>
+            <p>${subjects.length} subject(s), ${questionCount} questions, ${timeMinutes} minutes</p>
+            <p class="quiz-loading-sub">This may take 15-20 seconds</p>
+        </div>
+    `;
+
+    try {
+        const res = await fetchWithTimeout('/api/mocktest/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subjects, question_count: questionCount, time_minutes: timeMinutes })
+        }, 90000);
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to generate mock test');
+        }
+        const data = await res.json();
+        mockTestState = {
+            questions: data.questions,
+            answers: {},
+            flagged: new Set(),
+            currentIndex: 0,
+            timeRemaining: timeMinutes * 60,
+            timerInterval: null,
+            timeMinutes: timeMinutes,
+            started: true,
+        };
+        startMockTimer();
+        renderMockQuestion();
+    } catch (err) {
+        content.innerHTML = `<div class="error-msg">${escapeHtml(err.message)}<br><button class="retry-btn" onclick="showView('mocktest')">Try Again</button></div>`;
+    }
+}
+
+function startMockTimer() {
+    if (mockTestState.timerInterval) clearInterval(mockTestState.timerInterval);
+    mockTestState.timerInterval = setInterval(() => {
+        mockTestState.timeRemaining--;
+        updateMockTimer();
+        if (mockTestState.timeRemaining <= 0) {
+            clearInterval(mockTestState.timerInterval);
+            submitMockTest(true);
+        }
+    }, 1000);
+}
+
+function updateMockTimer() {
+    const el = document.getElementById('mt-timer');
+    if (!el) return;
+    const mins = Math.floor(mockTestState.timeRemaining / 60);
+    const secs = mockTestState.timeRemaining % 60;
+    el.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+    if (mockTestState.timeRemaining <= 300) {
+        el.classList.add('timer-danger');
+    }
+}
+
+function renderMockQuestion() {
+    const s = mockTestState;
+    const q = s.questions[s.currentIndex];
+    const content = document.getElementById('mocktest-content');
+    const total = s.questions.length;
+    const answered = Object.keys(s.answers).length;
+
+    // Navigation sidebar circles
+    const navCircles = s.questions.map((_, i) => {
+        let cls = 'mt-nav-circle';
+        if (s.answers[String(i)] !== undefined) cls += ' answered';
+        if (s.flagged.has(i)) cls += ' flagged';
+        if (i === s.currentIndex) cls += ' current';
+        return `<div class="${cls}" onclick="goToMockQuestion(${i})">${i + 1}</div>`;
+    }).join('');
+
+    const isFlagged = s.flagged.has(s.currentIndex);
+    const subjectName = subjectsData[q.subject]?.name || q.subject;
+
+    content.innerHTML = `
+        <div class="mt-test-layout">
+            <div class="mt-sidebar">
+                <div class="mt-timer-box">
+                    <div class="mt-timer-label">Time Left</div>
+                    <div class="mt-timer" id="mt-timer">--:--</div>
+                </div>
+                <div class="mt-nav-grid">${navCircles}</div>
+                <div class="mt-sidebar-stats">${answered}/${total} answered</div>
+                <button class="quiz-action-btn primary mt-submit-btn" onclick="confirmSubmitMock()">Submit Test</button>
+            </div>
+            <div class="mt-question-area">
+                <div class="mt-q-header">
+                    <span class="mt-q-num">Question ${s.currentIndex + 1} of ${total}</span>
+                    <span class="concept-tag">${escapeHtml(subjectName)}</span>
+                    <button class="mt-flag-btn ${isFlagged ? 'flagged' : ''}" onclick="toggleMockFlag(${s.currentIndex})">
+                        ${isFlagged ? '🚩 Flagged' : '🏳️ Flag'}
+                    </button>
+                </div>
+                <div class="quiz-question">${escapeHtml(q.question)}</div>
+                <div class="quiz-options">
+                    ${['A', 'B', 'C', 'D'].map(letter => {
+                        const selected = s.answers[String(s.currentIndex)] === letter;
+                        return `<button class="option-btn ${selected ? 'mt-selected' : ''}" onclick="selectMockAnswer('${letter}')">
+                            <span class="option-letter">${letter}</span>
+                            <span class="option-text">${escapeHtml(q.options[letter] || '')}</span>
+                        </button>`;
+                    }).join('')}
+                </div>
+                <div class="mt-nav-btns">
+                    <button class="quiz-action-btn secondary" onclick="goToMockQuestion(${s.currentIndex - 1})" ${s.currentIndex === 0 ? 'disabled' : ''}>Previous</button>
+                    <button class="quiz-action-btn primary" onclick="goToMockQuestion(${s.currentIndex + 1})" ${s.currentIndex === total - 1 ? 'disabled' : ''}>Next</button>
+                </div>
+            </div>
+        </div>
+    `;
+    updateMockTimer();
+}
+
+function selectMockAnswer(letter) {
+    mockTestState.answers[String(mockTestState.currentIndex)] = letter;
+    renderMockQuestion();
+}
+
+function goToMockQuestion(idx) {
+    if (idx < 0 || idx >= mockTestState.questions.length) return;
+    mockTestState.currentIndex = idx;
+    renderMockQuestion();
+}
+
+function toggleMockFlag(idx) {
+    if (mockTestState.flagged.has(idx)) {
+        mockTestState.flagged.delete(idx);
+    } else {
+        mockTestState.flagged.add(idx);
+    }
+    renderMockQuestion();
+}
+
+function confirmSubmitMock() {
+    const unanswered = mockTestState.questions.length - Object.keys(mockTestState.answers).length;
+    const msg = unanswered > 0
+        ? `You have ${unanswered} unanswered question(s). Are you sure you want to submit?`
+        : 'Are you sure you want to submit the test?';
+    if (confirm(msg)) submitMockTest(false);
+}
+
+async function submitMockTest(autoSubmit) {
+    if (mockTestState.timerInterval) clearInterval(mockTestState.timerInterval);
+    const content = document.getElementById('mocktest-content');
+    content.innerHTML = '<div class="loading">Grading your test...</div>';
+
+    try {
+        const timeTaken = (mockTestState.timeMinutes * 60) - mockTestState.timeRemaining;
+        const res = await fetchWithTimeout('/api/mocktest/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                questions: mockTestState.questions,
+                answers: mockTestState.answers,
+                time_taken_seconds: timeTaken,
+            })
+        }, 15000);
+        const data = await res.json();
+        renderMockResults(data, autoSubmit);
+        // Record progress for mock test
+        recordMockProgress(data);
+    } catch (err) {
+        content.innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
+    }
+}
+
+async function recordMockProgress(data) {
+    // Record overall mock test to progress
+    try {
+        const res = await fetchWithTimeout('/api/progress/record', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                subject: 'mock_test',
+                chapter_num: '',
+                score: data.correct,
+                total: data.total,
+                wrong_concepts: data.results.filter(r => !r.is_correct).map(r => r.concept),
+                best_streak: 0,
+                hydra_spawned: 0,
+                hydra_defeated: false,
+                is_mock: true,
+            })
+        }, 15000);
+        const progData = await res.json();
+        updateXpHeader(progData.total_xp, progData.level, progData.level_name);
+        if (progData.new_badges && progData.new_badges.length > 0) {
+            showBadgeToasts(progData.new_badges);
+        }
+    } catch (e) { /* non-critical */ }
+}
+
+function renderMockResults(data, autoSubmit) {
+    const content = document.getElementById('mocktest-content');
+
+    // Subject breakdown bars
+    let breakdownHtml = '';
+    for (const [subj, stats] of Object.entries(data.subject_breakdown)) {
+        const name = subjectsData[subj]?.name || subj;
+        const emoji = subjectsData[subj]?.emoji || '';
+        const colorClass = stats.accuracy >= 80 ? 'pg-green' : stats.accuracy >= 60 ? 'pg-amber' : 'pg-red';
+        breakdownHtml += `
+            <div class="subject-progress-row">
+                <div class="spr-label">${emoji} ${name}</div>
+                <div class="spr-bar-wrap"><div class="spr-bar ${colorClass}" style="width:${stats.accuracy}%"></div></div>
+                <div class="spr-stats">${stats.correct}/${stats.total} (${stats.accuracy}%)</div>
+            </div>
+        `;
+    }
+
+    // Question-by-question review
+    let reviewHtml = data.results.map((r, i) => {
+        const icon = r.is_correct ? '✅' : '❌';
+        return `
+            <div class="mt-review-q ${r.is_correct ? '' : 'wrong'}">
+                <div class="mt-rq-header">${icon} Q${i + 1}. ${escapeHtml(r.question)}</div>
+                <div class="mt-rq-body">
+                    ${!r.is_correct ? `<div class="mt-rq-yours">Your answer: <strong>${r.user_answer || 'Not answered'}</strong> — ${escapeHtml(r.options[r.user_answer] || '')}</div>` : ''}
+                    <div class="mt-rq-correct">Correct: <strong>${r.correct_answer}</strong> — ${escapeHtml(r.options[r.correct_answer] || '')}</div>
+                    ${r.explanation ? `<div class="mt-rq-expl">${escapeHtml(r.explanation)}</div>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    let emoji, message;
+    if (data.percentage >= 90) { emoji = '🏆'; message = 'Outstanding performance!'; }
+    else if (data.percentage >= 70) { emoji = '💪'; message = 'Great job! Keep it up!'; }
+    else if (data.percentage >= 50) { emoji = '📚'; message = 'Good effort! Review the weak areas.'; }
+    else { emoji = '💪'; message = 'Keep practicing! You will improve!'; }
+
+    content.innerHTML = `
+        <div class="quiz-results" style="max-width:800px">
+            ${autoSubmit ? '<div class="mt-auto-submit-msg">Time is up! Test auto-submitted.</div>' : ''}
+            <div class="results-emoji">${emoji}</div>
+            <h3>Mock Test Results</h3>
+            <p class="results-message">${message}</p>
+            <div class="results-stats">
+                <div class="result-stat">
+                    <span class="result-stat-num">${data.correct}/${data.total}</span>
+                    <span class="result-stat-label">Score</span>
+                </div>
+                <div class="result-stat">
+                    <span class="result-stat-num">${data.percentage}%</span>
+                    <span class="result-stat-label">Percentage</span>
+                </div>
+            </div>
+            <div class="progress-section"><h3>Subject Breakdown</h3>${breakdownHtml}</div>
+            <div class="progress-section"><h3>Question Review</h3><div class="mt-review-list">${reviewHtml}</div></div>
+            <div class="results-actions">
+                <button class="quiz-action-btn primary" onclick="showView('mocktest')">Retake</button>
+                <button class="quiz-action-btn secondary" onclick="showView('progress')">View Progress</button>
+            </div>
+        </div>
+    `;
+}
+
+
+// === Study Planner ===
+
+async function initPlanner() {
+    const body = document.getElementById('planner-body');
+    body.innerHTML = '<div class="loading">Loading planner...</div>';
+    try {
+        const res = await fetchWithTimeout('/api/planner/current', {}, 10000);
+        const data = await res.json();
+        if (data.has_plan) {
+            renderPlannerView(data);
+        } else {
+            renderPlannerSetup();
+        }
+    } catch (err) {
+        renderPlannerSetup();
+    }
+}
+
+function renderPlannerSetup() {
+    const body = document.getElementById('planner-body');
+    const subjects = Object.entries(subjectsData).filter(([, s]) => s.total_chapters > 0);
+    const checksHtml = subjects.map(([key, s]) => `
+        <label class="mt-subject-check">
+            <input type="checkbox" class="planner-subj-check" value="${key}" checked> ${s.emoji} ${s.name}
+        </label>
+    `).join('');
+
+    body.innerHTML = `
+        <div class="mt-setup-card">
+            <h3>Create Your Study Plan</h3>
+            <div class="form-row">
+                <label for="planner-exam-date">Exam Date</label>
+                <input type="date" id="planner-exam-date" class="planner-date-input" value="">
+            </div>
+            <div class="form-row">
+                <label>Subjects</label>
+                <div class="mt-subject-checks">${checksHtml}</div>
+            </div>
+            <div class="form-row">
+                <label>Study Hours Per Day</label>
+                <div class="mt-slider-row">
+                    <input type="range" id="planner-hours" min="1" max="5" value="2">
+                    <span id="planner-hours-label" class="mt-slider-label">2 hrs</span>
+                </div>
+            </div>
+            <button class="ask-btn" onclick="generatePlan()">Generate My Plan</button>
+        </div>
+    `;
+    const hSlider = document.getElementById('planner-hours');
+    hSlider.addEventListener('input', () => {
+        document.getElementById('planner-hours-label').textContent = hSlider.value + ' hrs';
+    });
+    // Set default exam date to 3 weeks from now
+    const defaultDate = new Date();
+    defaultDate.setDate(defaultDate.getDate() + 21);
+    document.getElementById('planner-exam-date').value = defaultDate.toISOString().split('T')[0];
+}
+
+async function generatePlan() {
+    const examDate = document.getElementById('planner-exam-date').value;
+    if (!examDate) { alert('Please select an exam date!'); return; }
+    const subjects = Array.from(document.querySelectorAll('.planner-subj-check:checked')).map(c => c.value);
+    if (subjects.length === 0) { alert('Select at least one subject!'); return; }
+    const dailyHours = parseInt(document.getElementById('planner-hours').value);
+
+    const body = document.getElementById('planner-body');
+    body.innerHTML = `
+        <div class="quiz-loading-screen">
+            <div class="quiz-loading-icon"><span class="rr-spinner quiz-spinner"></span></div>
+            <h3>Generating your study plan...</h3>
+            <p>AI is creating a personalized plan based on your progress</p>
+            <p class="quiz-loading-sub">This may take 15-20 seconds</p>
+        </div>
+    `;
+
+    try {
+        const res = await fetchWithTimeout('/api/planner/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ exam_date: examDate, subjects, daily_hours: dailyHours })
+        }, 90000);
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to generate plan');
+        }
+        const data = await res.json();
+        data.has_plan = true;
+        renderPlannerView(data);
+    } catch (err) {
+        body.innerHTML = `<div class="error-msg">${escapeHtml(err.message)}<br><button class="retry-btn" onclick="renderPlannerSetup()">Try Again</button></div>`;
+    }
+}
+
+function renderPlannerView(plan) {
+    const body = document.getElementById('planner-body');
+    const tasks = plan.tasks || [];
+    const completed = new Set(plan.completed_tasks || []);
+    const today = new Date().toISOString().split('T')[0];
+
+    let totalTasks = 0;
+    let doneTasks = 0;
+    tasks.forEach(day => {
+        (day.tasks || []).forEach((_, ti) => {
+            totalTasks++;
+            if (completed.has(`${day.date}_${ti}`)) doneTasks++;
+        });
+    });
+
+    // Find current day number
+    let currentDayNum = 0;
+    tasks.forEach((day, i) => {
+        if (day.date <= today) currentDayNum = day.day_number || (i + 1);
+    });
+
+    const totalDays = plan.total_days || tasks.length;
+    const progressPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+
+    let daysHtml = tasks.map(day => {
+        const isToday = day.date === today;
+        const isPast = day.date < today;
+        const dayTasks = (day.tasks || []).map((task, ti) => {
+            const taskKey = `${day.date}_${ti}`;
+            const isDone = completed.has(taskKey);
+            const priorityCls = task.priority === 'high' ? 'priority-high' : task.priority === 'low' ? 'priority-low' : 'priority-med';
+            const subjName = subjectsData[task.subject]?.emoji || '';
+            return `
+                <div class="planner-task ${isDone ? 'done' : ''}" onclick="togglePlannerTask('${day.date}', ${ti})">
+                    <span class="planner-check">${isDone ? '✅' : '⬜'}</span>
+                    <span class="planner-task-text">${subjName} ${escapeHtml(task.chapter_name || task.activity)}</span>
+                    <span class="planner-task-meta">${task.duration_minutes || 30} min</span>
+                    <span class="planner-priority ${priorityCls}">${task.priority || 'medium'}</span>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="planner-day ${isToday ? 'today' : ''} ${isPast ? 'past' : ''}">
+                <div class="planner-day-header">
+                    <span class="planner-day-label">${isToday ? '📍 TODAY — ' : ''}Day ${day.day_number || ''}</span>
+                    <span class="planner-day-date">${day.date}</span>
+                </div>
+                <div class="planner-day-tasks">${dayTasks}</div>
+            </div>
+        `;
+    }).join('');
+
+    body.innerHTML = `
+        <div class="planner-overview">
+            <div class="planner-overview-bar">
+                <span>Day ${currentDayNum} of ${totalDays}</span>
+                <span>${doneTasks}/${totalTasks} tasks done (${progressPct}%)</span>
+            </div>
+            <div class="quiz-progress-bar-wrap"><div class="quiz-progress-bar" style="width:${progressPct}%"></div></div>
+        </div>
+        <div class="planner-calendar">${daysHtml}</div>
+        <div style="text-align:center;margin-top:20px">
+            <button class="quiz-action-btn secondary" onclick="renderPlannerSetup()">Create New Plan</button>
+        </div>
+    `;
+}
+
+async function togglePlannerTask(date, taskIndex) {
+    try {
+        const res = await fetchWithTimeout('/api/planner/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date, task_index: taskIndex })
+        }, 10000);
+        // Reload planner
+        initPlanner();
+    } catch (e) { /* non-critical */ }
+}
+
+
+// === NCERT Solutions ===
+
+async function loadNcertSolutions(subjectKey, chapterNum, chapterName) {
+    const section = document.getElementById('ncert-solutions-section');
+    const contentEl = document.getElementById('ncert-solutions-content');
+
+    if (section.style.display !== 'none' && contentEl.dataset.loaded === 'true') {
+        // Toggle collapse
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+
+    if (contentEl.dataset.loaded === 'true') return;
+
+    contentEl.innerHTML = '<div class="rr-loading"><span class="rr-spinner"></span> Generating NCERT solutions for "' + escapeHtml(chapterName) + '"... (first time takes ~15 sec)</div>';
+
+    try {
+        const res = await fetchWithTimeout(`/api/ncert-solutions/${subjectKey}/${chapterNum}`, {}, 90000);
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to load NCERT solutions');
+        }
+        const data = await res.json();
+        contentEl.innerHTML = data.html;
+        contentEl.dataset.loaded = 'true';
+    } catch (err) {
+        contentEl.innerHTML = `
+            <div class="error-msg">
+                ${escapeHtml(err.message)}
+                <br><button class="retry-btn" onclick="document.getElementById('ncert-solutions-content').dataset.loaded=''; loadNcertSolutions('${subjectKey}', '${chapterNum}', '${escapeAttr(chapterName)}')">Retry</button>
+            </div>`;
+    }
+}
+
+
+// === Snap & Solve ===
+
+let _snapSolveFile = null;
+
+function initSnapSolve() {
+    const fileInput = document.getElementById('snap-file-input');
+    if (!fileInput) return;
+    fileInput.addEventListener('change', onSnapFileSelected);
+}
+
+function onSnapFileSelected(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    _snapSolveFile = file;
+
+    const previewEl = document.getElementById('snap-preview');
+    const solveBtn = document.getElementById('snap-solve-btn');
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        previewEl.src = ev.target.result;
+        previewEl.style.display = 'block';
+        solveBtn.style.display = 'inline-block';
+    };
+    reader.readAsDataURL(file);
+}
+
+function triggerSnapUpload() {
+    document.getElementById('snap-file-input').click();
+}
+
+async function submitSnapSolve() {
+    if (!_snapSolveFile) { alert('Please select an image first!'); return; }
+
+    const btn = document.getElementById('snap-solve-btn');
+    btn.disabled = true;
+    btn.textContent = 'Analyzing...';
+
+    const subjectKey = document.getElementById('subject-select').value || '';
+    const formData = new FormData();
+    formData.append('image', _snapSolveFile);
+    if (subjectKey) formData.append('subject', subjectKey);
+
+    const history = document.getElementById('chat-history');
+    // Add a question bubble with image preview
+    const imgUrl = URL.createObjectURL(_snapSolveFile);
+    history.innerHTML = `
+        <div class="chat-bubble chat-question">
+            <div class="q-label">📸 Snap & Solve${subjectKey ? ' • ' + (subjectsData[subjectKey]?.name || subjectKey) : ''}</div>
+            <img src="${imgUrl}" class="snap-preview" alt="Uploaded question">
+        </div>
+        <div class="chat-bubble chat-answer" id="snap-loading-bubble">
+            <div class="loading-dots"><span></span><span></span><span></span></div>
+            <div class="loading-status">Analyzing your image... this may take 10-20 seconds.</div>
+        </div>
+    ` + history.innerHTML;
+
+    try {
+        const res = await fetchWithTimeout('/api/snap-solve', {
+            method: 'POST',
+            body: formData,
+        }, 90000);
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Something went wrong');
+
+        const lb = document.getElementById('snap-loading-bubble');
+        if (lb) {
+            lb.removeAttribute('id');
+            lb.innerHTML = `
+                <div class="a-label">Study Coach (Snap & Solve)</div>
+                <div class="answer-text readable-content">${renderMarkdown(data.answer)}</div>
+                <button class="read-aloud-btn" onclick="readAloud(this)" style="margin-top:8px">🔊 Read Aloud</button>
+            `;
+        }
+        if (data.usage_today !== undefined) {
+            updateUsageDisplay(data.usage_today, data.usage_limit, data.usage_remaining);
+        }
+    } catch (err) {
+        const lb = document.getElementById('snap-loading-bubble');
+        if (lb) {
+            lb.removeAttribute('id');
+            lb.innerHTML = `<div class="error-msg">${escapeHtml(err.message)}</div>`;
+        }
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Solve This!';
+    _snapSolveFile = null;
+    document.getElementById('snap-file-input').value = '';
+    document.getElementById('snap-preview').style.display = 'none';
+    btn.style.display = 'none';
+}
+
+
+// === Read Aloud (Web Speech API) ===
+
+// Preload voices
+if (typeof speechSynthesis !== 'undefined') {
+    speechSynthesis.getVoices();
+    speechSynthesis.onvoiceschanged = () => { speechSynthesis.getVoices(); };
+}
+
+function readAloud(btn) {
+    const container = btn.closest('.readable-content') || btn.parentElement.querySelector('.readable-content') || btn.parentElement;
+    const text = container.innerText;
+
+    if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+        btn.textContent = '🔊 Read Aloud';
+        return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    // Try to find an Indian English voice
+    const voices = speechSynthesis.getVoices();
+    const indianVoice = voices.find(v => v.lang === 'en-IN') || voices.find(v => v.lang.startsWith('en'));
+    if (indianVoice) utterance.voice = indianVoice;
+    utterance.onend = () => { btn.textContent = '🔊 Read Aloud'; };
+    btn.textContent = '🔇 Stop';
+    speechSynthesis.speak(utterance);
 }

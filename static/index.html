@@ -21,19 +21,35 @@
                     </div>
                 </div>
                 <div class="header-right">
-                    <div id="usage-badge" class="usage-badge usage-ok">Loading...</div>
+                    <div class="header-top-row">
+                        <div id="xp-bar-header" class="xp-bar-header" style="display:none">
+                            <span id="xp-level-label" class="xp-level-label">L1</span>
+                            <div class="xp-bar-track"><div class="xp-bar-fill" id="xp-bar-fill" style="width:0%"></div></div>
+                            <span id="xp-value-label" class="xp-value-label">0 XP</span>
+                        </div>
+                        <div id="usage-badge" class="usage-badge usage-ok">Loading...</div>
+                    </div>
                     <nav class="nav-tabs">
                         <button class="nav-btn active" data-view="subjects" onclick="showView('subjects')">
                             📖 Subjects
                         </button>
                         <button class="nav-btn" data-view="reckoner" onclick="showView('reckoner')">
-                            ⚡ Ready Reckoner
+                            ⚡ Reckoner
                         </button>
                         <button class="nav-btn" data-view="practice" onclick="showView('practice')">
                             🏋️ Practice
                         </button>
+                        <button class="nav-btn" data-view="mocktest" onclick="showView('mocktest')">
+                            📝 Mock Test
+                        </button>
+                        <button class="nav-btn" data-view="planner" onclick="showView('planner')">
+                            🗓️ Planner
+                        </button>
+                        <button class="nav-btn" data-view="progress" onclick="showView('progress')">
+                            📊 Progress
+                        </button>
                         <button class="nav-btn" data-view="doubt" onclick="showView('doubt')">
-                            🤖 Ask a Doubt
+                            🤖 Doubt
                         </button>
                     </nav>
                 </div>
@@ -90,6 +106,72 @@
             </div>
         </main>
 
+        <!-- Mock Test View -->
+        <main id="mocktest-view" class="view">
+            <div class="container">
+                <div id="mocktest-content">
+                    <div class="mocktest-setup">
+                        <div class="practice-header">
+                            <h2>📝 Mock Test</h2>
+                            <p>Simulate a real exam with timed, multi-subject tests</p>
+                        </div>
+                        <div class="mt-setup-card">
+                            <h3>Select Subjects</h3>
+                            <div id="mt-subject-checkboxes" class="mt-subject-checks"></div>
+                            <div class="mt-setup-row">
+                                <div class="mt-setup-field">
+                                    <label>Questions</label>
+                                    <div class="mt-slider-row">
+                                        <input type="range" id="mt-question-count" min="10" max="30" step="10" value="20">
+                                        <span id="mt-question-label" class="mt-slider-label">20</span>
+                                    </div>
+                                </div>
+                                <div class="mt-setup-field">
+                                    <label>Time (minutes)</label>
+                                    <div class="mt-slider-row">
+                                        <input type="range" id="mt-time" min="15" max="45" step="15" value="30">
+                                        <span id="mt-time-label" class="mt-slider-label">30 min</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="ask-btn" onclick="startMockTest()">Start Test</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Planner View -->
+        <main id="planner-view" class="view">
+            <div class="container">
+                <div id="planner-content">
+                    <div class="practice-header">
+                        <h2>🗓️ Study Planner</h2>
+                        <p>AI-generated day-by-day study plan tailored to your needs</p>
+                    </div>
+                    <div id="planner-body" class="planner-body">
+                        <div class="loading">Loading planner...</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Progress View -->
+        <main id="progress-view" class="view">
+            <div class="container">
+                <div class="practice-header">
+                    <h2>📊 Progress Dashboard</h2>
+                    <p>Track your learning journey and earn badges</p>
+                </div>
+                <div id="progress-content">
+                    <div class="loading">Loading progress...</div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Badge Toast Container -->
+        <div id="badge-toast-container" class="badge-toast-container"></div>
+
         <!-- Doubt Solver View -->
         <main id="doubt-view" class="view">
             <div class="container">
@@ -119,6 +201,15 @@
                         <button id="ask-btn" class="ask-btn" onclick="askDoubt()">
                             Ask My Doubt ✨
                         </button>
+                    </div>
+
+                    <!-- Snap & Solve -->
+                    <div class="snap-zone" onclick="triggerSnapUpload()">
+                        <input type="file" id="snap-file-input" accept="image/*" capture="environment">
+                        <div>📸 <strong>Snap a Question</strong></div>
+                        <div style="font-size:0.85rem; color:var(--text-light); margin-top:4px;">Take a photo or upload an image of your question</div>
+                        <img id="snap-preview" class="snap-preview" style="display:none" alt="Preview">
+                        <button type="button" id="snap-solve-btn" class="snap-solve-btn" style="display:none; margin-top:12px;" onclick="event.stopPropagation(); submitSnapSolve()">Solve This!</button>
                     </div>
 
                     <!-- Chat History -->
