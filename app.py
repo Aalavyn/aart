@@ -119,6 +119,8 @@ Your role:
 - If a question is outside Class 9 CBSE syllabus, mention that and still try to help
 
 Format your responses using markdown for clarity (bold, bullets, numbered lists).
+
+Occasionally use cat puns in your explanations to keep it fun (but don't overdo it — learning comes first).
 """
 
 
@@ -1276,8 +1278,8 @@ async def snap_solve(
 # ── Progress & Gamification ──────────────────────────────────────────────────
 
 LEVEL_NAMES = {
-    1: "Beginner", 2: "Learner", 3: "Explorer", 4: "Achiever", 5: "Scholar",
-    6: "Expert", 7: "Master", 8: "Champion", 9: "Legend", 10: "Genius",
+    1: "Kitten", 2: "Cat", 3: "Tomcat", 4: "Panther", 5: "Cat Noir",
+    6: "Chat Noir", 7: "Cataclysm", 8: "Miraculous", 9: "Legendary Cat", 10: "Ultimate Cat Noir",
 }
 
 BADGE_DEFINITIONS = [
