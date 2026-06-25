@@ -287,7 +287,7 @@ async function showChapterDetail(subjectKey, chapterNum) {
     content.innerHTML = '<div class="loading">Loading chapter...</div>';
 
     try {
-        const res = await fetchWithTimeout(`/api/chapter/${subjectKey}/${chapterNum}`, {}, 90000);
+        const res = await fetchWithTimeout(`/api/chapter/${subjectKey}/${chapterNum}`, {}, 120000);
         if (!res.ok) throw new Error('Could not load chapter');
         const data = await res.json();
 
@@ -412,7 +412,7 @@ async function askDoubt(retryParams) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subject: subjectKey, question, chapter: chapterNum || null }),
-        }, 90000); // 90s timeout for AI calls (Render cold start + Gemini)
+        }, 120000); // 120s timeout for AI calls (Render cold start + Gemini)
 
         clearTimeout(statusTimer);
         clearTimeout(wakeTimer);
@@ -528,10 +528,10 @@ async function toggleReckoner(subjectKey, chapterNum, chapterName) {
     // Already loaded?
     if (body.dataset.loaded === 'true') return;
 
-    body.innerHTML = `<div class="rr-loading"><span class="rr-spinner"></span> Generating reckoner for "${chapterName}"... (first time can take 30-60 sec if server was sleeping 😸)</div>`;
+    body.innerHTML = `<div class="rr-loading"><span class="rr-spinner"></span> Generating reckoner for "${chapterName}"... this takes 30-60 seconds on first load ⏳</div>`;
 
     try {
-        const res = await fetchWithTimeout(`/api/reckoner/${subjectKey}/${chapterNum}`, {}, 90000);
+        const res = await fetchWithTimeout(`/api/reckoner/${subjectKey}/${chapterNum}`, {}, 120000);
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.detail || 'Failed to load reckoner');
@@ -680,10 +680,10 @@ async function toggleBrainTeaser(subjectKey, chapterNum, chapterName) {
 
     if (body.dataset.loaded === 'brainteaser') return;
 
-    body.innerHTML = `<div class="rr-loading"><span class="rr-spinner"></span> Generating brain teasers for "${chapterName}"... (first time takes ~10 sec)</div>`;
+    body.innerHTML = `<div class="rr-loading"><span class="rr-spinner"></span> Generating brain teasers for "${chapterName}"... this takes 30-60 seconds on first load ⏳</div>`;
 
     try {
-        const res = await fetchWithTimeout(`/api/brainteaser/${subjectKey}/${chapterNum}`, {}, 90000);
+        const res = await fetchWithTimeout(`/api/brainteaser/${subjectKey}/${chapterNum}`, {}, 120000);
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.detail || 'Failed to load');
@@ -748,7 +748,7 @@ async function startQuiz(subjectKey, chapterNum, chapterName) {
             <div class="quiz-loading-icon"><span class="rr-spinner quiz-spinner"></span></div>
             <h3>Generating practice questions...</h3>
             <p>${subjectName} - Ch ${parseInt(chapterNum)}: ${chapterName}</p>
-            <p class="quiz-loading-sub">First time may take ~10 seconds</p>
+            <p class="quiz-loading-sub">Generating... this takes 30-60 seconds on first load ⏳</p>
         </div>
     `;
 
@@ -764,7 +764,7 @@ async function startQuiz(subjectKey, chapterNum, chapterName) {
                 exclude_ids: [],
                 focus_concept: null
             })
-        }, 60000);
+        }, 120000);
 
         if (!res.ok) {
             const err = await res.json();
@@ -914,7 +914,7 @@ async function spawnHydraQuestions(concept) {
                 exclude_ids: s.excludeIds,
                 focus_concept: concept
             })
-        }, 60000);
+        }, 120000);
 
         if (!res.ok) return; // silently fail — quiz continues with remaining questions
 
@@ -1310,7 +1310,7 @@ async function startMockTest() {
             <div class="quiz-loading-icon"><span class="rr-spinner quiz-spinner"></span></div>
             <h3>Generating mock test...</h3>
             <p>${subjects.length} subject(s), ${questionCount} questions, ${timeMinutes} minutes</p>
-            <p class="quiz-loading-sub">This may take 15-20 seconds</p>
+            <p class="quiz-loading-sub">Generating... this takes 30-60 seconds on first load ⏳</p>
         </div>
     `;
 
@@ -1319,7 +1319,7 @@ async function startMockTest() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subjects, question_count: questionCount, time_minutes: timeMinutes })
-        }, 90000);
+        }, 120000);
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.detail || 'Failed to generate mock test');
@@ -1639,7 +1639,7 @@ async function generatePlan() {
             <div class="quiz-loading-icon"><span class="rr-spinner quiz-spinner"></span></div>
             <h3>Generating your study plan...</h3>
             <p>AI is creating a personalized plan based on your progress</p>
-            <p class="quiz-loading-sub">This may take 15-20 seconds</p>
+            <p class="quiz-loading-sub">Generating... this takes 30-60 seconds on first load ⏳</p>
         </div>
     `;
 
@@ -1648,7 +1648,7 @@ async function generatePlan() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ exam_date: examDate, subjects, daily_hours: dailyHours })
-        }, 90000);
+        }, 120000);
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.detail || 'Failed to generate plan');
@@ -1758,10 +1758,10 @@ async function loadNcertSolutions(subjectKey, chapterNum, chapterName) {
 
     if (contentEl.dataset.loaded === 'true') return;
 
-    contentEl.innerHTML = '<div class="rr-loading"><span class="rr-spinner"></span> Generating NCERT solutions for "' + escapeHtml(chapterName) + '"... (first time takes ~15 sec)</div>';
+    contentEl.innerHTML = '<div class="rr-loading"><span class="rr-spinner"></span> Generating NCERT solutions for "' + escapeHtml(chapterName) + '"... this takes 30-60 seconds on first load ⏳</div>';
 
     try {
-        const res = await fetchWithTimeout(`/api/ncert-solutions/${subjectKey}/${chapterNum}`, {}, 90000);
+        const res = await fetchWithTimeout(`/api/ncert-solutions/${subjectKey}/${chapterNum}`, {}, 120000);
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.detail || 'Failed to load NCERT solutions');
@@ -1839,7 +1839,7 @@ async function submitSnapSolve() {
         const res = await fetchWithTimeout('/api/snap-solve', {
             method: 'POST',
             body: formData,
-        }, 90000);
+        }, 120000);
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Something went wrong');

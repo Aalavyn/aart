@@ -53,8 +53,8 @@ elif GEMINI_API_KEY and GEMINI_API_KEY != "your-key-here":
     from google import genai
     gemini_client = genai.Client(api_key=GEMINI_API_KEY)
     ai_backend = "gemini"
-    ai_backend_name = "Google Gemini 2.5 Flash"
-    print(f"[OK] AI Backend: Gemini 2.5 Flash")
+    ai_backend_name = "Google Gemini 2.0 Flash Lite"
+    print(f"[OK] AI Backend: Gemini 2.0 Flash Lite")
 else:
     print("[WARN]  No AI API key configured. Set GROQ_API_KEY or GEMINI_API_KEY in .env")
 
@@ -102,7 +102,7 @@ app = FastAPI(title="Umayal's Study Coach", version="2.2.0")
 _ai_executor = ThreadPoolExecutor(max_workers=3)
 
 # Timeout for AI calls (seconds)
-AI_CALL_TIMEOUT = 75
+AI_CALL_TIMEOUT = 120
 
 SYSTEM_PROMPT = """You are Umayal's personal study coach for CBSE Class 9 at DPS Nacharam.
 
@@ -214,7 +214,7 @@ def validate_formatted_content(raw_text: str, formatted_html: str) -> dict:
     }
 
 
-GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash"]
+GEMINI_MODELS = ["gemini-2.0-flash-lite", "gemini-2.0-flash"]
 
 def _call_ai_sync(system_prompt: str, user_prompt: str) -> str:
     """Synchronous AI call with retry + model fallback for 503 errors."""
@@ -249,7 +249,7 @@ def _call_ai_sync(system_prompt: str, user_prompt: str) -> str:
                         ai_logger.warning(f"Gemini {model_name} attempt {attempt+1} failed (503), retrying in {wait}s...")
                         time.sleep(wait)
                     elif "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
-                        wait = (attempt + 1) * 15  # 15s, 30s, 45s — rate limit needs longer waits
+                        wait = (attempt + 1) * 5  # 5s, 10s, 15s — reduced backoff for faster recovery
                         ai_logger.warning(f"Gemini {model_name} attempt {attempt+1} rate-limited (429), retrying in {wait}s...")
                         time.sleep(wait)
                     else:
@@ -586,11 +586,29 @@ async def _precache_all_chapters():
     )
 
 
+async def _keep_alive():
+    """Ping self every 10 minutes to prevent Render cold start."""
+    import httpx
+    render_url = os.getenv("RENDER_EXTERNAL_URL", "")
+    if not render_url:
+        ai_logger.info("KEEP_ALIVE: No RENDER_EXTERNAL_URL set, skipping")
+        return
+    async with httpx.AsyncClient() as client:
+        while True:
+            await asyncio.sleep(600)  # 10 minutes
+            try:
+                await client.get(f"{render_url}/api/health", timeout=10)
+                ai_logger.info("KEEP_ALIVE: ping OK")
+            except Exception as e:
+                ai_logger.warning(f"KEEP_ALIVE: ping failed — {e}")
+
+
 @app.on_event("startup")
 async def startup_event():
     """Kick off background pre-caching of all chapters on server start."""
     ai_logger.info("SERVER STARTUP — kicking off chapter pre-cache...")
     asyncio.ensure_future(_precache_all_chapters())
+    asyncio.ensure_future(_keep_alive())
 
 @app.get("/api/usage")
 async def get_usage():
@@ -801,7 +819,16 @@ async def get_reckoner(subject: str, chapter_num: str):
         save_reckoner_cache(subject, chapter_num, html)
         return {"html": html, "cached": False}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+        # Fallback: return basic formatted chapter content as reckoner
+        ai_logger.error(f"Reckoner AI failed for {subject}/{chapter_num}: {e}")
+        fallback_html = (
+            f'<div class="rr-card"><div class="rr-section">'
+            f'<h4>📖 Chapter Summary</h4>{basic_html_format(text[:5000])}'
+            f'</div><div class="rr-section"><h4>⚠️ AI reckoner unavailable right now</h4>'
+            f'<p>Try again in a minute — the AI service is busy. Meanwhile, here\'s the chapter content.</p>'
+            f'</div></div>'
+        )
+        return {"html": fallback_html, "cached": False}
 
 
 # ── Practice Problems ────────────────────────────────────────────────────────
