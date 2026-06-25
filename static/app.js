@@ -1030,30 +1030,12 @@ function renderMarkdown(text) {
 // === Cat Noir SVG Helpers ===
 
 function getCatNoirAvatarSVG() {
-    return `<svg width="28" height="28" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-        <path d="M25 85 Q20 55 30 40 L15 10 Q18 8 22 12 L35 30 Q45 22 55 22 Q65 22 75 30 L88 12 Q92 8 95 10 L80 40 Q90 55 85 85 Q75 95 50 95 Q25 95 25 85Z" fill="#0a0a0a" stroke="#00ff41" stroke-width="2.5"/>
-        <path d="M30 48 Q38 38 50 38 Q62 38 70 48 Q72 52 70 56 Q62 62 50 62 Q38 62 30 56 Q28 52 30 48Z" fill="#1a1a2e" stroke="#00ff41" stroke-width="1.5"/>
-        <ellipse cx="40" cy="50" rx="6" ry="8" fill="#00ff41" opacity="0.9"/>
-        <ellipse cx="40" cy="50" rx="2" ry="7" fill="#0a0a0a"/>
-        <ellipse cx="60" cy="50" rx="6" ry="8" fill="#00ff41" opacity="0.9"/>
-        <ellipse cx="60" cy="50" rx="2" ry="7" fill="#0a0a0a"/>
-        <path d="M48 58 L50 61 L52 58Z" fill="#ff6b9d"/>
-    </svg>`;
+    return `<img src="/static/catnoir.png" alt="Cat Noir" class="cat-noir-avatar-img">`;
 }
 
 function getCatNoirCelebrationSVG() {
     return `<div class="cat-noir-celebration">
-        <svg width="80" height="95" viewBox="0 0 120 140" xmlns="http://www.w3.org/2000/svg">
-            <path d="M30 130 Q25 90 35 70 L20 25 Q24 20 28 26 L40 55 Q50 45 60 45 Q70 45 80 55 L92 26 Q96 20 100 25 L85 70 Q95 90 90 130 Q80 138 60 138 Q40 138 30 130Z" fill="#0a0a0a" stroke="#00ff41" stroke-width="2.5"/>
-            <path d="M36 78 Q45 66 60 66 Q75 66 84 78 Q86 83 84 88 Q75 96 60 96 Q45 96 36 88 Q34 83 36 78Z" fill="#1a1a2e" stroke="#00ff41" stroke-width="2"/>
-            <ellipse cx="50" cy="82" rx="7" ry="9" fill="#00ff41"/>
-            <ellipse cx="50" cy="82" rx="2.5" ry="8" fill="#0a0a0a"/>
-            <ellipse cx="70" cy="82" rx="7" ry="9" fill="#00ff41"/>
-            <ellipse cx="70" cy="82" rx="2.5" ry="8" fill="#0a0a0a"/>
-            <path d="M57 91 L60 95 L63 91Z" fill="#ff6b9d"/>
-            <circle cx="60" cy="110" r="6" fill="none" stroke="#00ff41" stroke-width="2"/>
-            <circle cx="60" cy="110" r="3" fill="#00ff41" opacity="0.5"/>
-        </svg>
+        <img src="/static/catnoir.png" alt="Cat Noir" class="cat-noir-celebration-img">
     </div>`;
 }
 

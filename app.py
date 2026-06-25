@@ -214,7 +214,7 @@ def validate_formatted_content(raw_text: str, formatted_html: str) -> dict:
     }
 
 
-GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash"]
+GEMINI_MODELS = ["gemini-2.0-flash", "gemini-2.5-flash"]
 
 def _call_ai_sync(system_prompt: str, user_prompt: str) -> str:
     """Synchronous AI call with retry + model fallback for 503 errors."""
@@ -247,6 +247,10 @@ def _call_ai_sync(system_prompt: str, user_prompt: str) -> str:
                     if "503" in err_str or "UNAVAILABLE" in err_str or "overloaded" in err_str.lower():
                         wait = (attempt + 1) * 2  # 2s, 4s, 6s
                         ai_logger.warning(f"Gemini {model_name} attempt {attempt+1} failed (503), retrying in {wait}s...")
+                        time.sleep(wait)
+                    elif "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+                        wait = (attempt + 1) * 15  # 15s, 30s, 45s — rate limit needs longer waits
+                        ai_logger.warning(f"Gemini {model_name} attempt {attempt+1} rate-limited (429), retrying in {wait}s...")
                         time.sleep(wait)
                     else:
                         raise  # Non-retryable error
@@ -570,8 +574,8 @@ async def _precache_all_chapters():
             _precache_status["failed"] += 1
 
         _precache_status["done"] += 1
-        # Small delay between chapters to avoid rate-limit (2 sec)
-        await asyncio.sleep(2)
+        # Respect free tier rate limit: 20 req/min → 4 sec between requests
+        await asyncio.sleep(4)
 
     _precache_status["running"] = False
     _precache_status["complete"] = True
