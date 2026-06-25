@@ -287,7 +287,7 @@ async function showChapterDetail(subjectKey, chapterNum) {
     content.innerHTML = '<div class="loading">Loading chapter...</div>';
 
     try {
-        const res = await fetchWithTimeout(`/api/chapter/${subjectKey}/${chapterNum}`, {}, 60000);
+        const res = await fetchWithTimeout(`/api/chapter/${subjectKey}/${chapterNum}`, {}, 90000);
         if (!res.ok) throw new Error('Could not load chapter');
         const data = await res.json();
 
@@ -412,7 +412,7 @@ async function askDoubt(retryParams) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subject: subjectKey, question, chapter: chapterNum || null }),
-        }, 60000); // 60s timeout for AI calls
+        }, 90000); // 90s timeout for AI calls (Render cold start + Gemini)
 
         clearTimeout(statusTimer);
         clearTimeout(wakeTimer);
@@ -528,10 +528,10 @@ async function toggleReckoner(subjectKey, chapterNum, chapterName) {
     // Already loaded?
     if (body.dataset.loaded === 'true') return;
 
-    body.innerHTML = `<div class="rr-loading"><span class="rr-spinner"></span> Generating reckoner for "${chapterName}"... (first time takes ~10 sec)</div>`;
+    body.innerHTML = `<div class="rr-loading"><span class="rr-spinner"></span> Generating reckoner for "${chapterName}"... (first time can take 30-60 sec if server was sleeping 😸)</div>`;
 
     try {
-        const res = await fetchWithTimeout(`/api/reckoner/${subjectKey}/${chapterNum}`, {}, 60000);
+        const res = await fetchWithTimeout(`/api/reckoner/${subjectKey}/${chapterNum}`, {}, 90000);
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.detail || 'Failed to load reckoner');
@@ -683,7 +683,7 @@ async function toggleBrainTeaser(subjectKey, chapterNum, chapterName) {
     body.innerHTML = `<div class="rr-loading"><span class="rr-spinner"></span> Generating brain teasers for "${chapterName}"... (first time takes ~10 sec)</div>`;
 
     try {
-        const res = await fetchWithTimeout(`/api/brainteaser/${subjectKey}/${chapterNum}`, {}, 60000);
+        const res = await fetchWithTimeout(`/api/brainteaser/${subjectKey}/${chapterNum}`, {}, 90000);
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.detail || 'Failed to load');

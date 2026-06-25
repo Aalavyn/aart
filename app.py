@@ -102,7 +102,7 @@ app = FastAPI(title="Umayal's Study Coach", version="2.2.0")
 _ai_executor = ThreadPoolExecutor(max_workers=3)
 
 # Timeout for AI calls (seconds)
-AI_CALL_TIMEOUT = 45
+AI_CALL_TIMEOUT = 75
 
 SYSTEM_PROMPT = """You are Umayal's personal study coach for CBSE Class 9 at DPS Nacharam.
 
