@@ -112,7 +112,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Init Snap & Solve file input listener
     initSnapSolve();
+
+    // Init Cat Noir quote rotator
+    initCatNoirQuotes();
 });
+
+// === Cat Noir Quotes ===
+function initCatNoirQuotes() {
+    const quotes = [
+        '"Time to save the day... with studying! \uD83D\uDC3E" \u2014 Cat Noir',
+        '"A true hero never stops learning!" \u2014 Cat Noir',
+        '"Claws out for knowledge! \uD83D\uDC31" \u2014 Cat Noir',
+        '"Plagg would be proud of your studying!" \u2014 Cat Noir',
+        '"Miraculous study powers, activate!" \u2014 Cat Noir',
+    ];
+    const el = document.getElementById('cat-noir-quote');
+    if (!el) return;
+    let idx = 0;
+    setInterval(() => {
+        idx = (idx + 1) % quotes.length;
+        el.style.opacity = '0';
+        setTimeout(() => {
+            el.textContent = quotes[idx];
+            el.style.opacity = '0.7';
+        }, 500);
+    }, 30000);
+}
 
 // === View Navigation ===
 function showView(view) {
@@ -399,7 +424,10 @@ async function askDoubt(retryParams) {
         if (lb) {
             lb.removeAttribute('id');
             lb.innerHTML = `
-                <div class="a-label">Study Coach</div>
+                <div class="cat-noir-avatar">
+                    ${getCatNoirAvatarSVG()}
+                    <span class="cat-noir-avatar-label">Study Coach</span>
+                </div>
                 <div class="answer-text readable-content">${renderMarkdown(data.answer)}</div>
                 <button class="read-aloud-btn" onclick="readAloud(this)" style="margin-top:8px">🔊 Read Aloud</button>
             `;
@@ -846,7 +874,7 @@ function selectAnswer(selected) {
         // Show hydra message
         const hydraMsg = document.getElementById('hydra-msg');
         hydraMsg.style.display = 'block';
-        hydraMsg.innerHTML = '<span class="hydra-icon">&#128013;</span> Hydra! 2 more questions spawned on this topic!';
+        hydraMsg.innerHTML = '<span class="hydra-icon">&#128013;</span> \uD83D\uDC0D Hiss! 2 more questions spawned! Show them your claws! \uD83D\uDC3E';
         hydraMsg.classList.add('hydra-animate');
 
         // Spawn 2 more questions in background
@@ -855,10 +883,15 @@ function selectAnswer(selected) {
 
     s.totalAnswered++;
 
-    // Show explanation
+    // Show explanation with cat-themed messages
+    const correctMessages = ["Purrfect! \uD83D\uDC3E", "Meow-nificent! \uD83D\uDE3A", "Cat-astrophically good! \uD83D\uDC31", "Clawsome answer! \uD83D\uDC3E"];
+    const wrongMessages = ["Not quite, kitten! \uD83D\uDE40", "Cat got your tongue? \uD83D\uDE3F", "Try again, little cat! \uD83D\uDC31"];
+    const catMsg = isCorrect
+        ? correctMessages[Math.floor(Math.random() * correctMessages.length)]
+        : wrongMessages[Math.floor(Math.random() * wrongMessages.length)];
     const explEl = document.getElementById('quiz-explanation');
     explEl.style.display = 'block';
-    explEl.innerHTML = `<strong>${isCorrect ? 'Correct!' : 'Not quite.'}</strong> ${escapeHtml(q.explanation || '')}`;
+    explEl.innerHTML = `<strong>${catMsg}</strong> ${escapeHtml(q.explanation || '')}`;
     explEl.className = 'quiz-explanation ' + (isCorrect ? 'explanation-correct' : 'explanation-wrong');
 
     // Show next button
@@ -909,10 +942,10 @@ function renderQuizResults() {
 
     const pct = s.totalAnswered > 0 ? Math.round((s.score / s.totalAnswered) * 100) : 0;
     let emoji, message;
-    if (pct >= 90) { emoji = '&#127942;'; message = 'Outstanding! You nailed it!'; }
-    else if (pct >= 70) { emoji = '&#128170;'; message = 'Great job! Keep it up!'; }
-    else if (pct >= 50) { emoji = '&#128218;'; message = 'Good effort! Review the weak topics below.'; }
-    else { emoji = '&#128170;'; message = 'Keep practicing! You will get there!'; }
+    if (pct >= 90) { emoji = '\uD83D\uDC31'; message = 'Cat Noir would be proud! Miraculous score!'; }
+    else if (pct >= 70) { emoji = '\uD83D\uDC3E'; message = 'Great job, kitten! Almost purrfect!'; }
+    else if (pct >= 50) { emoji = '\uD83D\uDE3A'; message = 'Not bad! Keep practicing, little cat!'; }
+    else { emoji = '\uD83D\uDE40'; message = 'Time for more training, kitten! Cat Noir never gives up!'; }
 
     const weakTopicsHtml = s.wrongConcepts.length > 0
         ? `<div class="results-weak">
@@ -923,7 +956,7 @@ function renderQuizResults() {
 
     content.innerHTML = `
         <div class="quiz-results">
-            <div class="results-emoji">${emoji}</div>
+            ${getCatNoirCelebrationSVG()}
             <h3>Practice Complete!</h3>
             <p class="results-chapter">${subjectName} - Ch ${parseInt(s.chapter)}: ${s.chapterName}</p>
             <p class="results-message">${message}</p>
@@ -992,6 +1025,44 @@ function renderMarkdown(text) {
     html = html.replace(/<p>(<ul>)/g, '$1');
     html = html.replace(/(<\/ul>)<\/p>/g, '$1');
     return html;
+}
+
+// === Cat Noir SVG Helpers ===
+
+function getCatNoirAvatarSVG() {
+    return `<svg width="28" height="28" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <path d="M25 85 Q20 55 30 40 L15 10 Q18 8 22 12 L35 30 Q45 22 55 22 Q65 22 75 30 L88 12 Q92 8 95 10 L80 40 Q90 55 85 85 Q75 95 50 95 Q25 95 25 85Z" fill="#0a0a0a" stroke="#00ff41" stroke-width="2.5"/>
+        <path d="M30 48 Q38 38 50 38 Q62 38 70 48 Q72 52 70 56 Q62 62 50 62 Q38 62 30 56 Q28 52 30 48Z" fill="#1a1a2e" stroke="#00ff41" stroke-width="1.5"/>
+        <ellipse cx="40" cy="50" rx="6" ry="8" fill="#00ff41" opacity="0.9"/>
+        <ellipse cx="40" cy="50" rx="2" ry="7" fill="#0a0a0a"/>
+        <ellipse cx="60" cy="50" rx="6" ry="8" fill="#00ff41" opacity="0.9"/>
+        <ellipse cx="60" cy="50" rx="2" ry="7" fill="#0a0a0a"/>
+        <path d="M48 58 L50 61 L52 58Z" fill="#ff6b9d"/>
+    </svg>`;
+}
+
+function getCatNoirCelebrationSVG() {
+    return `<div class="cat-noir-celebration">
+        <svg width="80" height="95" viewBox="0 0 120 140" xmlns="http://www.w3.org/2000/svg">
+            <path d="M30 130 Q25 90 35 70 L20 25 Q24 20 28 26 L40 55 Q50 45 60 45 Q70 45 80 55 L92 26 Q96 20 100 25 L85 70 Q95 90 90 130 Q80 138 60 138 Q40 138 30 130Z" fill="#0a0a0a" stroke="#00ff41" stroke-width="2.5"/>
+            <path d="M36 78 Q45 66 60 66 Q75 66 84 78 Q86 83 84 88 Q75 96 60 96 Q45 96 36 88 Q34 83 36 78Z" fill="#1a1a2e" stroke="#00ff41" stroke-width="2"/>
+            <ellipse cx="50" cy="82" rx="7" ry="9" fill="#00ff41"/>
+            <ellipse cx="50" cy="82" rx="2.5" ry="8" fill="#0a0a0a"/>
+            <ellipse cx="70" cy="82" rx="7" ry="9" fill="#00ff41"/>
+            <ellipse cx="70" cy="82" rx="2.5" ry="8" fill="#0a0a0a"/>
+            <path d="M57 91 L60 95 L63 91Z" fill="#ff6b9d"/>
+            <circle cx="60" cy="110" r="6" fill="none" stroke="#00ff41" stroke-width="2"/>
+            <circle cx="60" cy="110" r="3" fill="#00ff41" opacity="0.5"/>
+        </svg>
+    </div>`;
+}
+
+function getCatalysmRingSVG() {
+    return `<svg width="20" height="20" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="20" cy="20" r="14" fill="none" stroke="#00ff41" stroke-width="3" opacity="0.8"/>
+        <circle cx="20" cy="20" r="7" fill="#00ff41" opacity="0.4"/>
+        <circle cx="20" cy="20" r="3" fill="#00ff41" opacity="0.8"/>
+    </svg>`;
 }
 
 
@@ -1072,7 +1143,7 @@ function showBadgeToasts(badgeIds) {
         const def = BADGE_DEFS[id] || { name: id, icon: "🏆" };
         const toast = document.createElement('div');
         toast.className = 'badge-toast';
-        toast.innerHTML = `<span class="badge-toast-icon">${def.icon}</span> Badge Earned: <strong>${def.name}</strong>!`;
+        toast.innerHTML = `<span class="cat-noir-ring-badge">${getCatalysmRingSVG()}</span> <span class="badge-toast-icon">${def.icon}</span> Badge Earned: <strong>${def.name}</strong>!`;
         container.appendChild(toast);
         setTimeout(() => { toast.classList.add('show'); }, idx * 600);
         setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 400); }, 4000 + idx * 600);
@@ -1483,15 +1554,15 @@ function renderMockResults(data, autoSubmit) {
     }).join('');
 
     let emoji, message;
-    if (data.percentage >= 90) { emoji = '🏆'; message = 'Outstanding performance!'; }
-    else if (data.percentage >= 70) { emoji = '💪'; message = 'Great job! Keep it up!'; }
-    else if (data.percentage >= 50) { emoji = '📚'; message = 'Good effort! Review the weak areas.'; }
-    else { emoji = '💪'; message = 'Keep practicing! You will improve!'; }
+    if (data.percentage >= 90) { emoji = '\uD83D\uDC31'; message = 'Cat Noir would be proud! Miraculous score!'; }
+    else if (data.percentage >= 70) { emoji = '\uD83D\uDC3E'; message = 'Great job, kitten! Almost purrfect!'; }
+    else if (data.percentage >= 50) { emoji = '\uD83D\uDE3A'; message = 'Not bad! Keep practicing, little cat!'; }
+    else { emoji = '\uD83D\uDE40'; message = 'Time for more training, kitten! Cat Noir never gives up!'; }
 
     content.innerHTML = `
         <div class="quiz-results" style="max-width:800px">
             ${autoSubmit ? '<div class="mt-auto-submit-msg">Time is up! Test auto-submitted.</div>' : ''}
-            <div class="results-emoji">${emoji}</div>
+            ${getCatNoirCelebrationSVG()}
             <h3>Mock Test Results</h3>
             <p class="results-message">${message}</p>
             <div class="results-stats">
@@ -1795,7 +1866,10 @@ async function submitSnapSolve() {
         if (lb) {
             lb.removeAttribute('id');
             lb.innerHTML = `
-                <div class="a-label">Study Coach (Snap & Solve)</div>
+                <div class="cat-noir-avatar">
+                    ${getCatNoirAvatarSVG()}
+                    <span class="cat-noir-avatar-label">Study Coach (Snap & Solve)</span>
+                </div>
                 <div class="answer-text readable-content">${renderMarkdown(data.answer)}</div>
                 <button class="read-aloud-btn" onclick="readAloud(this)" style="margin-top:8px">🔊 Read Aloud</button>
             `;

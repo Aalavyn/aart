@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Umayal's Study Coach</title>
+    <title>Umayal's Study Coach 🐾</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐱</text></svg>">
     <link rel="stylesheet" href="/static/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
@@ -14,10 +15,33 @@
         <header class="header">
             <div class="header-content">
                 <div class="logo">
-                    <span class="logo-icon">📚</span>
+                    <span class="logo-icon">
+                        <svg class="cat-noir-logo-svg" width="42" height="42" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                            <!-- Cat silhouette head -->
+                            <path d="M25 85 Q20 55 30 40 L15 10 Q18 8 22 12 L35 30 Q45 22 55 22 Q65 22 75 30 L88 12 Q92 8 95 10 L80 40 Q90 55 85 85 Q75 95 50 95 Q25 95 25 85Z" fill="#0a0a0a" stroke="#00ff41" stroke-width="2"/>
+                            <!-- Mask -->
+                            <path d="M30 48 Q38 38 50 38 Q62 38 70 48 Q72 52 70 56 Q62 62 50 62 Q38 62 30 56 Q28 52 30 48Z" fill="#1a1a2e" stroke="#00ff41" stroke-width="1.5"/>
+                            <!-- Left eye -->
+                            <ellipse cx="40" cy="50" rx="6" ry="8" fill="#00ff41" opacity="0.9"/>
+                            <ellipse cx="40" cy="50" rx="2" ry="7" fill="#0a0a0a"/>
+                            <!-- Right eye -->
+                            <ellipse cx="60" cy="50" rx="6" ry="8" fill="#00ff41" opacity="0.9"/>
+                            <ellipse cx="60" cy="50" rx="2" ry="7" fill="#0a0a0a"/>
+                            <!-- Nose -->
+                            <path d="M48 58 L50 61 L52 58Z" fill="#ff6b9d"/>
+                            <!-- Glow filter -->
+                            <defs>
+                                <filter id="glow-logo">
+                                    <feGaussianBlur stdDeviation="2" result="blur"/>
+                                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                                </filter>
+                            </defs>
+                        </svg>
+                    </span>
                     <div>
                         <h1>Umayal's Study Coach</h1>
-                        <p class="tagline">CBSE Class 9 • DPS Nacharam</p>
+                        <p class="tagline">CBSE Class 9 • DPS Nacharam • 🐾</p>
+                        <p class="tagline-sub">Powered by Cat Noir 🐾</p>
                     </div>
                 </div>
                 <div class="header-right">
@@ -31,25 +55,25 @@
                     </div>
                     <nav class="nav-tabs">
                         <button class="nav-btn active" data-view="subjects" onclick="showView('subjects')">
-                            📖 Subjects
+                            🐱 Subjects
                         </button>
                         <button class="nav-btn" data-view="reckoner" onclick="showView('reckoner')">
                             ⚡ Reckoner
                         </button>
                         <button class="nav-btn" data-view="practice" onclick="showView('practice')">
-                            🏋️ Practice
+                            🐾 Practice
                         </button>
                         <button class="nav-btn" data-view="mocktest" onclick="showView('mocktest')">
-                            📝 Mock Test
+                            🎯 Mock Test
                         </button>
                         <button class="nav-btn" data-view="planner" onclick="showView('planner')">
-                            🗓️ Planner
+                            📅 Planner
                         </button>
                         <button class="nav-btn" data-view="progress" onclick="showView('progress')">
-                            📊 Progress
+                            🏆 Progress
                         </button>
                         <button class="nav-btn" data-view="doubt" onclick="showView('doubt')">
-                            🤖 Doubt
+                            💬 Ask a Doubt
                         </button>
                     </nav>
                 </div>
@@ -59,7 +83,45 @@
         <!-- Subjects View -->
         <main id="subjects-view" class="view active">
             <div class="container">
-                <h2 class="section-title">📚 Your Subjects</h2>
+                <!-- Cat Noir Hero Welcome -->
+                <div class="cat-noir-hero">
+                    <div class="cat-noir-hero-mascot">
+                        <svg class="cat-noir-mascot-svg" width="120" height="140" viewBox="0 0 120 140" xmlns="http://www.w3.org/2000/svg">
+                            <!-- Cat body silhouette -->
+                            <path d="M30 130 Q25 90 35 70 L20 25 Q24 20 28 26 L40 55 Q50 45 60 45 Q70 45 80 55 L92 26 Q96 20 100 25 L85 70 Q95 90 90 130 Q80 138 60 138 Q40 138 30 130Z" fill="#0a0a0a" stroke="#00ff41" stroke-width="2.5" filter="url(#glow-mascot)"/>
+                            <!-- Mask -->
+                            <path d="M36 78 Q45 66 60 66 Q75 66 84 78 Q86 83 84 88 Q75 96 60 96 Q45 96 36 88 Q34 83 36 78Z" fill="#1a1a2e" stroke="#00ff41" stroke-width="2"/>
+                            <!-- Left eye -->
+                            <ellipse cx="50" cy="82" rx="7" ry="9" fill="#00ff41" class="cat-eye-glow"/>
+                            <ellipse cx="50" cy="82" rx="2.5" ry="8" fill="#0a0a0a"/>
+                            <!-- Right eye -->
+                            <ellipse cx="70" cy="82" rx="7" ry="9" fill="#00ff41" class="cat-eye-glow"/>
+                            <ellipse cx="70" cy="82" rx="2.5" ry="8" fill="#0a0a0a"/>
+                            <!-- Nose -->
+                            <path d="M57 91 L60 95 L63 91Z" fill="#ff6b9d"/>
+                            <!-- Bell/ring on collar -->
+                            <circle cx="60" cy="110" r="6" fill="none" stroke="#00ff41" stroke-width="2" class="cat-ring-glow"/>
+                            <circle cx="60" cy="110" r="3" fill="#00ff41" opacity="0.5"/>
+                            <!-- Whiskers -->
+                            <line x1="20" y1="85" x2="42" y2="88" stroke="#00ff41" stroke-width="1" opacity="0.5"/>
+                            <line x1="20" y1="90" x2="42" y2="90" stroke="#00ff41" stroke-width="1" opacity="0.5"/>
+                            <line x1="78" y1="88" x2="100" y2="85" stroke="#00ff41" stroke-width="1" opacity="0.5"/>
+                            <line x1="78" y1="90" x2="100" y2="90" stroke="#00ff41" stroke-width="1" opacity="0.5"/>
+                            <defs>
+                                <filter id="glow-mascot">
+                                    <feGaussianBlur stdDeviation="3" result="blur"/>
+                                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                                </filter>
+                            </defs>
+                        </svg>
+                    </div>
+                    <div class="cat-noir-hero-text">
+                        <h2>Hey Umayal! Ready to ace your studies? <span class="paw-emoji">&#128062;</span></h2>
+                        <p class="cat-noir-hero-quote">"Every hero needs a study plan. Let's go, little kitten!" — Cat Noir</p>
+                    </div>
+                </div>
+
+                <h2 class="section-title">Your Subjects</h2>
                 <div id="subjects-accordion" class="subjects-accordion">
                     <div class="loading">Loading subjects...</div>
                 </div>
@@ -92,7 +154,7 @@
         <main id="practice-view" class="view">
             <div class="container">
                 <div class="practice-header">
-                    <h2>🏋️ Practice Problems</h2>
+                    <h2>🐾 Practice Problems</h2>
                     <p>Test your understanding with AI-generated questions and brain teasers</p>
                 </div>
                 <div class="practice-mode-btns">
@@ -112,7 +174,7 @@
                 <div id="mocktest-content">
                     <div class="mocktest-setup">
                         <div class="practice-header">
-                            <h2>📝 Mock Test</h2>
+                            <h2>🎯 Mock Test</h2>
                             <p>Simulate a real exam with timed, multi-subject tests</p>
                         </div>
                         <div class="mt-setup-card">
@@ -146,7 +208,7 @@
             <div class="container">
                 <div id="planner-content">
                     <div class="practice-header">
-                        <h2>🗓️ Study Planner</h2>
+                        <h2>📅 Study Planner</h2>
                         <p>AI-generated day-by-day study plan tailored to your needs</p>
                     </div>
                     <div id="planner-body" class="planner-body">
@@ -160,7 +222,7 @@
         <main id="progress-view" class="view">
             <div class="container">
                 <div class="practice-header">
-                    <h2>📊 Progress Dashboard</h2>
+                    <h2>🏆 Progress Dashboard</h2>
                     <p>Track your learning journey and earn badges</p>
                 </div>
                 <div id="progress-content">
@@ -177,7 +239,7 @@
             <div class="container">
                 <div class="doubt-solver">
                     <div class="doubt-header">
-                        <h2>🤖 AI Doubt Solver</h2>
+                        <h2>💬 AI Doubt Solver</h2>
                         <p>Ask any question about your CBSE Class 9 subjects!</p>
                     </div>
 
@@ -217,6 +279,28 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Floating Paw Print Background Decorations -->
+    <div class="floating-paws-container" aria-hidden="true">
+        <svg class="floating-paw fp-1" width="30" height="30" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><ellipse cx="50" cy="65" rx="22" ry="18" fill="#00ff41" opacity="0.06"/><ellipse cx="30" cy="38" rx="10" ry="12" fill="#00ff41" opacity="0.06" transform="rotate(-15 30 38)"/><ellipse cx="50" cy="30" rx="10" ry="12" fill="#00ff41" opacity="0.06"/><ellipse cx="70" cy="38" rx="10" ry="12" fill="#00ff41" opacity="0.06" transform="rotate(15 70 38)"/></svg>
+        <svg class="floating-paw fp-2" width="24" height="24" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><ellipse cx="50" cy="65" rx="22" ry="18" fill="#00ff41" opacity="0.05"/><ellipse cx="30" cy="38" rx="10" ry="12" fill="#00ff41" opacity="0.05" transform="rotate(-15 30 38)"/><ellipse cx="50" cy="30" rx="10" ry="12" fill="#00ff41" opacity="0.05"/><ellipse cx="70" cy="38" rx="10" ry="12" fill="#00ff41" opacity="0.05" transform="rotate(15 70 38)"/></svg>
+        <svg class="floating-paw fp-3" width="20" height="20" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><ellipse cx="50" cy="65" rx="22" ry="18" fill="#00ff41" opacity="0.04"/><ellipse cx="30" cy="38" rx="10" ry="12" fill="#00ff41" opacity="0.04" transform="rotate(-15 30 38)"/><ellipse cx="50" cy="30" rx="10" ry="12" fill="#00ff41" opacity="0.04"/><ellipse cx="70" cy="38" rx="10" ry="12" fill="#00ff41" opacity="0.04" transform="rotate(15 70 38)"/></svg>
+        <svg class="floating-paw fp-4" width="18" height="18" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><ellipse cx="50" cy="65" rx="22" ry="18" fill="#00ff41" opacity="0.05"/><ellipse cx="30" cy="38" rx="10" ry="12" fill="#00ff41" opacity="0.05" transform="rotate(-15 30 38)"/><ellipse cx="50" cy="30" rx="10" ry="12" fill="#00ff41" opacity="0.05"/><ellipse cx="70" cy="38" rx="10" ry="12" fill="#00ff41" opacity="0.05" transform="rotate(15 70 38)"/></svg>
+        <svg class="floating-paw fp-5" width="26" height="26" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><ellipse cx="50" cy="65" rx="22" ry="18" fill="#00ff41" opacity="0.04"/><ellipse cx="30" cy="38" rx="10" ry="12" fill="#00ff41" opacity="0.04" transform="rotate(-15 30 38)"/><ellipse cx="50" cy="30" rx="10" ry="12" fill="#00ff41" opacity="0.04"/><ellipse cx="70" cy="38" rx="10" ry="12" fill="#00ff41" opacity="0.04" transform="rotate(15 70 38)"/></svg>
+    </div>
+
+    <!-- Cat Noir Staff Divider -->
+    <div class="cat-noir-staff-divider" aria-hidden="true">
+        <svg width="100%" height="20" viewBox="0 0 400 20" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+            <line x1="10" y1="10" x2="390" y2="10" stroke="#00ff41" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+            <circle cx="200" cy="10" r="6" fill="#00ff41" opacity="0.4"/>
+            <circle cx="200" cy="10" r="3" fill="#1a1a2e"/>
+        </svg>
+    </div>
+
+    <div id="cat-noir-quote" class="cat-noir-quote-footer">
+        "Time to save the day... with studying! &#128062;" — Cat Noir
     </div>
 
     <script src="/static/app.js"></script>
